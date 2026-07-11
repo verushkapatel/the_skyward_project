@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinLit Index | The Skyward Project</title>
+<style>
+  :root{
+    --ink:#16181d; --sub:#6b7280; --line:#e5e7eb; --bg:#f7f7f8; --card:#ffffff;
+    --accent:#1a56db; --accent-ink:#ffffff; --ok:#0e9f6e; --warn:#c81e1e; --soft:#eef2ff;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.55; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px; margin:0 auto; padding:32px 20px 80px;}
+  .screen{display:none;}
+  .screen.active{display:block;}
+  h1{font-size:1.55rem; font-weight:700; letter-spacing:-0.02em;}
+  .kicker{font-size:.8rem; text-transform:uppercase; letter-spacing:.12em; color:var(--sub); font-weight:600; margin-bottom:6px;}
+  .meta{color:var(--sub); font-size:.92rem; margin-top:6px;}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:24px; margin-top:20px;}
+  label{display:block; font-size:.88rem; font-weight:600; margin-bottom:6px;}
+  input[type=text], select{
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px;
+    font-size:.95rem; font-family:inherit; background:#fff; color:var(--ink);
+  }
+  input[type=text]:focus, select:focus{outline:2px solid var(--accent); outline-offset:-1px; border-color:var(--accent);}
+  .field{margin-bottom:18px;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  @media(max-width:560px){.row2{grid-template-columns:1fr;}}
+  .toggle{display:flex; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:4px; margin:20px 0 6px;}
+  .toggle button{
+    flex:1; padding:10px; border:none; border-radius:7px; background:transparent;
+    font:inherit; font-weight:600; font-size:.95rem; color:var(--sub); cursor:pointer;
+  }
+  .toggle button.on{background:var(--card); color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.08);}
+  .note{font-size:.82rem; color:var(--sub); background:var(--soft); border-radius:8px; padding:10px 14px; margin:4px 0 18px;}
+  .checks{display:flex; flex-direction:column; gap:8px;}
+  .checks label, .radios label{
+    display:flex; align-items:center; gap:10px; font-weight:400; font-size:.93rem;
+    border:1px solid var(--line); border-radius:8px; padding:10px 12px; cursor:pointer; background:#fff;
+  }
+  .checks input, .radios input{accent-color:var(--accent); width:16px; height:16px; flex-shrink:0;}
+  .radios{display:flex; flex-direction:column; gap:8px;}
+  .btn{
+    display:inline-block; padding:12px 26px; border:none; border-radius:9px;
+    background:var(--accent); color:var(--accent-ink); font:inherit; font-weight:600;
+    font-size:.98rem; cursor:pointer;
+  }
+  .btn:hover{filter:brightness(1.08);}
+  .btn:disabled{opacity:.5; cursor:not-allowed;}
+  .btn.ghost{background:transparent; color:var(--ink); border:1px solid var(--line);}
+  .btn.danger{background:var(--warn);}
+  .actions{margin-top:24px; display:flex; gap:12px; justify-content:flex-end;}
+  .err{color:var(--warn); font-size:.85rem; margin-top:10px; display:none;}
+
+  /* test bar */
+  .bar{
+    position:sticky; top:0; z-index:10; background:var(--card); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; justify-content:space-between; padding:12px 20px;
+  }
+  .bar .inner{max-width:760px; margin:0 auto; width:100%; display:flex; align-items:center; justify-content:space-between;}
+  #timer{font-variant-numeric:tabular-nums; font-weight:700; font-size:1.05rem;}
+  #timer.low{color:var(--warn);}
+  #progress{font-size:.86rem; color:var(--sub);}
+
+  /* navigator */
+  .nav-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(40px,1fr)); gap:6px; margin-top:14px;}
+  .nav-grid button{
+    padding:8px 0; border:1px solid var(--line); border-radius:7px; background:#fff;
+    font:inherit; font-size:.82rem; font-weight:600; color:var(--sub); cursor:pointer;
+  }
+  .nav-grid button.done{background:var(--soft); color:var(--accent); border-color:#c7d2fe;}
+  .nav-grid button.cur{outline:2px solid var(--accent); outline-offset:-1px; color:var(--ink);}
+
+  .qpart{font-size:.75rem; text-transform:uppercase; letter-spacing:.1em; color:var(--sub); font-weight:700;}
+  .qnum{font-weight:700; margin:4px 0 2px; font-size:1rem;}
+  .qmarks{font-size:.8rem; color:var(--sub); margin-bottom:12px;}
+  .qtext{font-size:.98rem; margin-bottom:16px; white-space:pre-line;}
+  .opts{display:flex; flex-direction:column; gap:8px;}
+  .opts label{
+    display:flex; gap:12px; align-items:flex-start; border:1px solid var(--line); border-radius:9px;
+    padding:12px 14px; cursor:pointer; font-size:.94rem; background:#fff; transition:border-color .1s;
+  }
+  .opts label:hover{border-color:#9ca3af;}
+  .opts label.sel{border-color:var(--accent); background:var(--soft);}
+  .opts input{accent-color:var(--accent); margin-top:3px; flex-shrink:0;}
+  .opt-key{font-weight:700; flex-shrink:0;}
+
+  .qnav-btns{display:flex; justify-content:space-between; margin-top:20px; gap:10px;}
+
+  /* modal */
+  .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; align-items:center; justify-content:center; z-index:50; padding:20px;}
+  .modal-bg.show{display:flex;}
+  .modal{background:#fff; border-radius:12px; padding:26px; max-width:420px; width:100%;}
+  .modal h3{font-size:1.1rem; margin-bottom:8px;}
+  .modal p{font-size:.92rem; color:var(--sub);}
+
+  .done-icon{width:56px; height:56px; border-radius:50%; background:var(--ok); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.6rem; margin:0 auto 16px;}
+  .center{text-align:center;}
+  ol.inst{padding-left:20px; font-size:.94rem;}
+  ol.inst li{margin-bottom:8px;}
+</style>
+</head>
+<body>
+
+<!-- sticky bar (test only) -->
+<div class="bar" id="testbar" style="display:none;">
+  <div class="inner">
+    <span id="progress">0 / 27 answered</span>
+    <span id="timer">25:00</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- SCREEN 1: details -->
+  <section class="screen active" id="s-details">
+    <p class="kicker">The Skyward Project · FinLit Index · Pune 2026</p>
+    <h1>Common Financial Literacy Assessment</h1>
+    <p class="meta">27 questions · 25 marks · 25 minutes</p>
+
+    <div class="toggle" role="tablist">
+      <button type="button" id="tg-student" class="on" onclick="setRole('student')">Student</button>
+      <button type="button" id="tg-adult" onclick="setRole('adult')">Adult</button>
+    </div>
+
+    <div class="card">
+      <div class="field">
+        <label for="f-name">Name</label>
+        <input type="text" id="f-name" autocomplete="name">
+      </div>
+
+      <!-- student fields -->
+      <div id="student-fields">
+        <div class="row2">
+          <div class="field">
+            <label for="f-grade">Grade</label>
+            <select id="f-grade">
+              <option value="">Select</option><option>9</option><option>10</option><option>11</option><option>12</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-school">School</label>
+            <input type="text" id="f-school">
+          </div>
+        </div>
+
+        <h1 style="font-size:1.05rem; margin:8px 0 4px;">Background Information</h1>
+        <p class="note">This information is collected for our research endeavours only. It is used solely to understand overall patterns across different backgrounds and will not affect your score in any way.</p>
+
+        <div class="field">
+          <label for="b-transport">How do you come to school each day?</label>
+          <input type="text" id="b-transport">
+        </div>
+        <div class="field">
+          <label for="b-parents">What do your parents do for a living?</label>
+          <input type="text" id="b-parents">
+        </div>
+        <div class="field">
+          <label for="b-area">Which area do you stay in?</label>
+          <input type="text" id="b-area">
+        </div>
+        <div class="field">
+          <label>Select the devices you own from this list:</label>
+          <div class="checks">
+            <label><input type="checkbox" class="b-device" value="Smartphone">Smartphone</label>
+            <label><input type="checkbox" class="b-device" value="Tablet">Tablet</label>
+            <label><input type="checkbox" class="b-device" value="Laptop">Laptop</label>
+          </div>
+        </div>
+        <div class="field">
+          <label>What is your family's income level (monthly)?</label>
+          <div class="radios">
+            <label><input type="radio" name="b-income" value="₹0-25,000">₹0-25,000</label>
+            <label><input type="radio" name="b-income" value="₹25,001-50,000">₹25,001-50,000</label>
+            <label><input type="radio" name="b-income" value="₹50,001-1,00,000">₹50,001-1,00,000</label>
+            <label><input type="radio" name="b-income" value="₹1,00,001-2,50,000">₹1,00,001-2,50,000</label>
+            <label><input type="radio" name="b-income" value="₹2,50,001 or above">₹2,50,001 or above</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- adult fields -->
+      <div id="adult-fields" style="display:none;">
+        <div class="field">
+          <label for="f-prof">What is your profession?</label>
+          <input type="text" id="f-prof">
+        </div>
+        <p class="note">This information is collected for our research endeavours only and will not affect your score in any way.</p>
+      </div>
+
+      <p class="err" id="err-details">Please fill in the required fields above.</p>
+      <div class="actions">
+        <button class="btn" onclick="toInstructions()">Continue</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREEN 2: instructions -->
+  <section class="screen" id="s-inst">
+    <p class="kicker">Before you begin</p>
+    <h1>Instructions</h1>
+    <div class="card">
+      <ol class="inst">
+        <li>This assessment contains <b>27 multiple choice questions</b> worth <b>25 marks</b> in total. You have <b>25 minutes</b>.</li>
+        <li>The paper has four parts. <b>Part A</b> is a warm-up. <b>Part B</b> asks you to apply financial concepts to real situations. <b>Part C</b> tests strategic thinking — read those questions carefully, as more than one option will sound reasonable. <b>Part D</b> is a short rapid-fire round on market awareness.</li>
+        <li>Choose the <b>single best answer</b>. Only one option is correct.</li>
+        <li>You can move between questions freely and change your answers any time before submitting. Use the question grid to jump around.</li>
+        <li>Use a rough sheet for any calculations.</li>
+        <li>The test submits automatically when time runs out. Do not refresh or close this page during the test.</li>
+      </ol>
+      <div class="actions">
+        <button class="btn" onclick="startTest()">Start test</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREEN 3: test -->
+  <section class="screen" id="s-test">
+    <div class="card" id="qcard"></div>
+    <div class="qnav-btns">
+      <button class="btn ghost" id="btn-prev" onclick="go(-1)">← Previous</button>
+      <button class="btn ghost" id="btn-next" onclick="go(1)">Next →</button>
+    </div>
+    <div class="card">
+      <div class="nav-grid" id="navgrid"></div>
+      <div class="actions">
+        <button class="btn danger" onclick="confirmSubmit()">Submit test</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCREEN 4: done -->
+  <section class="screen" id="s-done">
+    <div class="card center" style="margin-top:60px; padding:44px 24px;">
+      <div class="done-icon">✓</div>
+      <h1>Submitted</h1>
+      <p class="meta" style="margin-top:10px;">Thank you. Your responses have been recorded.<br>You may now close this page.</p>
+      <p class="err" id="err-send" style="margin-top:16px;">We had trouble sending your responses automatically. Please tell the administrator — your answers are shown in the browser console.</p>
+    </div>
+  </section>
+
+</div>
+
+<!-- submit modal -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h3>Submit test?</h3>
+    <p id="modal-msg"></p>
+    <div class="actions">
+      <button class="btn ghost" onclick="closeModal()">Keep working</button>
+      <button class="btn danger" onclick="submitTest(false)">Submit</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= CONFIG — EDIT THESE TWO LINES ================= */
+const RESULTS_EMAIL = "verushkapatel4@gmail.com";   // where attempts are emailed (FormSubmit)
+const SHEETS_WEBHOOK = "https://script.google.com/macros/s/AKfycbyHrT-zCr-qk7ERVA4NBIHGO_FwbjbeNSha5tg9XYMyAAoYmIh05t81toaHQnaFbhL5cg/exec"; // Google Apps Script web app URL
+/* ================================================================= */
+
+const TEST_MINUTES = 25;
+
+const QUESTIONS = [
+ {part:"A",marks:0.5,text:"Meera gets ₹800 pocket money this month. She needs exam stationery (₹150) and her college application form fee is due this week (₹250). She also wants a new phone case she saw online (₹300), and her friend's birthday is coming up, for which she'd like to buy a gift (₹200).\n\nWhat should Meera prioritise first with her limited money?",opts:["The exam stationery, since it is the cheapest of her needs","The birthday gift, since the date cannot be moved","The application fee, since missing that deadline cannot be undone","An equal split across all four items"],key:"C"},
+ {part:"A",marks:0.5,text:"Rohan receives a text message: \"Your electricity bill payment failed. Pay ₹49 immediately via this link to avoid disconnection tonight: bit.ly/xyz123.\"\n\nWhat is the strongest warning sign in this message?",opts:["The small amount being requested","The shortened, unofficial link combined with pressure to act tonight","That it arrived by SMS rather than email","That the amount does not match a typical electricity bill"],key:"B"},
+ {part:"A",marks:0.5,text:"Ayesha's grandmother gives her ₹5,000 in cash for her birthday. Ayesha currently keeps it in a locked drawer at home.\n\nWhat is the primary advantage of depositing this money into a savings account instead?",opts:["A passbook entry makes it easier to prove she has the money","Money in a bank cannot be spent on impulse","Banks guarantee that deposits double over time","The money stays protected and earns interest over time"],key:"D"},
+ {part:"A",marks:0.5,text:"Karan deposits ₹2,000 in an account that pays 5% simple interest per year.\n\nHow much interest will he have earned after 2 years?",opts:["₹100","₹200","₹205","₹400"],key:"B"},
+ {part:"A",marks:0.5,text:"The Deshmukh household has a monthly income of ₹20,000, a single earning member, and no savings set aside at all.\n\nBefore considering any large discretionary purchase, what should the family ideally do first?",opts:["Set aside an emergency fund covering a few months of essentials","Put spare money into shares, since returns beat savings accounts","Buy gold jewellery as a store of value","Make the purchase now while seasonal discounts last"],key:"A"},
+ {part:"B",marks:1,text:"In 2015, a filter coffee in Pune cost ₹15. Today, the same coffee costs ₹30. Ravi has kept ₹1,500 in cash at home, untouched, since 2015.\n\nWhat has happened to the real purchasing power of Ravi's ₹1,500?",opts:["Nothing, since the amount is unchanged on paper","It now buys roughly half of what it did in 2015","It has grown, since rising prices mean money is in higher demand","It depends entirely on where he chooses to spend it"],key:"B"},
+ {part:"B",marks:1,text:"Sana invests ₹10,000 for 3 years. Bank A offers 8% simple interest per year. Bank B offers 8% interest per year, compounded annually.\n\nWhich account leaves Sana with more at the end, and why?",opts:["Both pay the same, since the rate and period are identical","Bank A, because simple interest is calculated on the full amount every single year","Bank B, because each year's interest itself starts earning interest","Bank A, because compounding involves deductions along the way"],key:"C"},
+ {part:"B",marks:1,text:"Aditya has ₹50,000 that he is certain he will not need for the next 3 years. He wants the highest guaranteed return.\n\nWhich product best suits Aditya's situation?",opts:["A savings account, so the money stays available if his plans change","A recurring deposit, spreading the amount over the 3 years","An equity mutual fund, since 3 years is a long horizon","A fixed deposit locked in for the full 3-year term"],key:"D"},
+ {part:"B",marks:1,text:"Priyanka receives a ₹15,000 scholarship and spends all of it on branded sneakers. Her brother receives the same amount and puts it into a recurring deposit earning 7% annual interest for 2 years.\n\nWhat is Priyanka's opportunity cost in this situation?",opts:["Nothing, since the sneakers hold resale value","The full ₹15,000 she spent","The GST portion of the sneaker price","The interest she gave up by not investing the money"],key:"D"},
+ {part:"B",marks:1,text:"Nikhil uses UPI every day for auto rides, groceries, and recharges, and feels very confident about handling money. He has never checked what interest his savings account pays and has no idea what his monthly expenses add up to.\n\nWhat does Nikhil's situation best illustrate?",opts:["Daily UPI use builds financial literacy on its own","His confidence is evidence of sound money management","Ease of making payments is not the same as understanding money","Expense tracking becomes unnecessary once payments are digital"],key:"C"},
+ {part:"B",marks:1,text:"Yash invests his entire ₹3,00,000 in savings into shares of a single small IT company, after a relative told him the stock doubled in value last year.\n\nWhat is the most significant risk in Yash's decision?",opts:["Small IT firms carry more risk than the overall market","One bad year at this single company could erase most of his savings","Stocks that double in one year usually fall the next","A relative's tip is a weaker signal than a broker's advice"],key:"B"},
+ {part:"B",marks:1,text:"Fatima is 29, unmarried, self-employed, has no employer-provided health cover, no dependants, and ₹60,000 in savings.\n\nWhich insurance product should Fatima prioritise acquiring first?",opts:["Health insurance, since one hospital bill could exceed her entire savings","Term life cover, since premiums are cheapest at her age","A pension plan, since the self-employed get no employer pension","None for now; she should first grow her savings to ₹5,00,000"],key:"A"},
+ {part:"C",marks:1.5,text:"Deepak wants to invest ₹1,20,000 in an equity mutual fund this year, but is worried about putting it all in right before a possible market fall.\n\nWhich approach best reduces this specific risk?",opts:["Invest the full amount today, since time in the market beats timing the market","Hold the money in cash until the next major correction arrives","Spread it as ₹10,000 monthly instalments across the year","Split it evenly between gold and the equity fund"],key:"C"},
+ {part:"C",marks:1.5,text:"A retailer offers a phone on a 'zero-interest' EMI of ₹4,200 per month for 12 months. The same phone costs ₹45,000 if paid fully in cash.\n\nWhich statement about this offer is accurate?",opts:["It is genuinely interest free, since no interest rate is charged","The total paid over 12 months works out higher than the cash price","The EMI route is cheaper once the value of keeping cash in hand is counted","Both routes cost the buyer the same in the end"],key:"B"},
+ {part:"C",marks:1.5,text:"Mr. Iyer is 55 and plans to retire in 5 years. 90% of his retirement savings sit in small-cap equity funds, which have given the highest returns of any product over the last decade.\n\nWhat is the most serious concern with this portfolio?",opts:["None; his funds have the strongest track record available","He holds too little equity for a 5-year horizon","A market crash near retirement would leave him no time to recover","Small-cap funds are not permitted for investors above 55"],key:"C"},
+ {part:"C",marks:1.5,text:"Meenal invests ₹1,00,000 for 5 years in a fixed deposit earning 7% annual compound interest. Over the same period, inflation averages 6% per year.\n\nWhich statement best describes her inflation-adjusted position?",opts:["Her wealth grows strongly, since 7 is comfortably above 6","She loses purchasing power every year she stays invested","The fixed rate makes inflation irrelevant to her outcome","She gains only about 1% a year in real terms"],key:"D"},
+ {part:"C",marks:1.5,text:"Arjun can pay ₹2,00,000 in cash for a car, or take a car loan at 9% annual interest and invest the ₹2,00,000 in a fund with an expected return of 12% per year.\n\nWhich statement captures the real trade-off in taking the loan?",opts:["It is a bet that an uncertain 12% will beat a guaranteed 9% cost","Borrowing for a depreciating asset can never be justified","The 3% gap settles it; the loan is clearly the right choice","The comparison is meaningless because cars lose value"],key:"A"},
+ {part:"C",marks:1.5,text:"Rhea is in the 20% income tax bracket. She is choosing between a bank fixed deposit, where interest is fully taxable, and a Public Provident Fund, where interest is tax exempt. Both offer broadly similar headline rates.\n\nThinking about her post-tax outcome, what should Rhea recognise?",opts:["The headline rate settles it; tax is a separate matter","The FD wins on liquidity, and liquidity outweighs tax","After tax, the PPF likely leaves her with more in hand","Tax treatment only matters for people in the 30% bracket"],key:"C"},
+ {part:"C",marks:1.5,text:"Aarav, 25, and Kamlesh, 58, each invest ₹5,00,000. Both choose an identical allocation: 80% in equity and 20% in debt instruments.\n\nWhat is the most important critique of this shared allocation?",opts:["Nothing; the split follows a professionally recommended ratio","Aarav is taking on too much risk for a first-time investor","Kamlesh's shorter horizon calls for far more in stable debt instruments","Both should replace the debt portion with gold"],key:"C"},
+ {part:"C",marks:1.5,text:"The Kulkarni household earns ₹90,000 per month. They save ₹10,000 every month in a savings account earning 3% annual compound interest, while inflation runs at 6% per year. They plan to accumulate ₹15,00,000 in 10 years for their child's higher education, a figure calculated at today's prices without adjusting for future inflation.\n\nWhich combination of issues most threatens this plan?",opts:["Their real return is negative and the target ignores what education will actually cost in 10 years","The vehicle is fine; only the monthly amount is too small","Compounding will overtake inflation given a full ten years","The plan works if they simply push the target date out by two years"],key:"A"},
+ {part:"D",marks:0.5,text:"What is the minimum ticket size to invest in an Alternative Investment Fund (AIF) in India?",opts:["₹10 lakh","₹50 lakh","₹1 crore","₹5 crore"],key:"C"},
+ {part:"D",marks:0.5,text:"What is the minimum ticket size to invest in a Portfolio Management Service (PMS) in India?",opts:["₹50 lakh","₹25 lakh","₹1 crore","₹10 lakh"],key:"A"},
+ {part:"D",marks:0.5,text:"What is the most common minimum monthly amount required to start a SIP in a mutual fund?",opts:["₹100","₹500","₹1,000","₹5,000"],key:"B"},
+ {part:"D",marks:0.5,text:"Which of these asset classes has shown the most growth in India over the last 30 years?",opts:["Gold","Real estate","Equity (shares)","Bank fixed deposits"],key:"C"},
+ {part:"D",marks:0.5,text:"Which of these asset classes has shown the most growth in India over the last 10 years?",opts:["Bank fixed deposits","Equity (shares)","Real estate","Gold"],key:"D"},
+ {part:"D",marks:0.5,text:"Which of these asset classes has shown the most growth over the last 2 years?",opts:["Equity (shares)","Precious metals","Real estate","Bank fixed deposits"],key:"B"},
+ {part:"D",marks:0.5,text:"What is a premium on an insurance policy?",opts:["The payout received when a claim is made","The regular amount paid to keep the policy active","A bonus added to the policy at maturity","The share of a claim the policyholder bears themselves"],key:"B"}
+];
+const PART_NAMES = {A:"Part A · Beginning", B:"Part B · Applied thinking", C:"Part C · Strategy", D:"Part D · Market awareness"};
+const LETTERS = ["A","B","C","D"];
+
+let role = "student";
+let answers = new Array(QUESTIONS.length).fill(null);
+let cur = 0;
+let secondsLeft = TEST_MINUTES * 60;
+let timerId = null;
+let startedAt = null;
+let submitted = false;
+
+function setRole(r){
+  role = r;
+  document.getElementById("tg-student").classList.toggle("on", r==="student");
+  document.getElementById("tg-adult").classList.toggle("on", r==="adult");
+  document.getElementById("student-fields").style.display = r==="student" ? "block" : "none";
+  document.getElementById("adult-fields").style.display = r==="adult" ? "block" : "none";
+}
+
+function show(id){
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+  window.scrollTo(0,0);
+}
+
+function toInstructions(){
+  const name = document.getElementById("f-name").value.trim();
+  let ok = !!name;
+  if(role==="student"){
+    ok = ok && document.getElementById("f-grade").value && document.getElementById("f-school").value.trim();
+  }else{
+    ok = ok && document.getElementById("f-prof").value.trim();
+  }
+  document.getElementById("err-details").style.display = ok ? "none" : "block";
+  if(ok) show("s-inst");
+}
+
+function startTest(){
+  startedAt = new Date();
+  show("s-test");
+  document.getElementById("testbar").style.display = "flex";
+  buildNav();
+  render();
+  timerId = setInterval(tick, 1000);
+  window.addEventListener("beforeunload", warnLeave);
+}
+function warnLeave(e){ if(!submitted){ e.preventDefault(); e.returnValue = ""; } }
+
+function tick(){
+  secondsLeft--;
+  const t = document.getElementById("timer");
+  const m = Math.floor(secondsLeft/60), s = secondsLeft%60;
+  t.textContent = String(m).padStart(2,"0")+":"+String(s).padStart(2,"0");
+  if(secondsLeft <= 300) t.classList.add("low");
+  if(secondsLeft <= 0){ clearInterval(timerId); submitTest(true); }
+}
+
+function buildNav(){
+  const g = document.getElementById("navgrid");
+  g.innerHTML = "";
+  QUESTIONS.forEach((_,i)=>{
+    const b = document.createElement("button");
+    b.textContent = i+1;
+    b.onclick = ()=>{ cur = i; render(); };
+    g.appendChild(b);
+  });
+}
+
+function render(){
+  const q = QUESTIONS[cur];
+  const card = document.getElementById("qcard");
+  card.innerHTML =
+    '<div class="qpart">'+PART_NAMES[q.part]+'</div>'+
+    '<div class="qnum">Question '+(cur+1)+' of '+QUESTIONS.length+'</div>'+
+    '<div class="qmarks">'+q.marks+(q.marks===1?' mark':' marks')+'</div>'+
+    '<div class="qtext">'+q.text+'</div>'+
+    '<div class="opts">'+ q.opts.map((o,j)=>
+      '<label class="'+(answers[cur]===LETTERS[j]?'sel':'')+'">'+
+      '<input type="radio" name="q'+cur+'" '+(answers[cur]===LETTERS[j]?'checked':'')+' onchange="pick('+j+')">'+
+      '<span class="opt-key">'+LETTERS[j]+')</span><span>'+o+'</span></label>'
+    ).join("") + '</div>';
+  document.getElementById("btn-prev").disabled = cur===0;
+  document.getElementById("btn-next").disabled = cur===QUESTIONS.length-1;
+  updateNav();
+}
+
+function pick(j){
+  answers[cur] = LETTERS[j];
+  render();
+}
+function go(d){ cur = Math.min(Math.max(cur+d,0), QUESTIONS.length-1); render(); }
+
+function updateNav(){
+  const btns = document.getElementById("navgrid").children;
+  let n = 0;
+  for(let i=0;i<btns.length;i++){
+    btns[i].className = "";
+    if(answers[i]){ btns[i].classList.add("done"); n++; }
+    if(i===cur) btns[i].classList.add("cur");
+  }
+  document.getElementById("progress").textContent = n+" / "+QUESTIONS.length+" answered";
+}
+
+function confirmSubmit(){
+  const un = answers.filter(a=>!a).length;
+  document.getElementById("modal-msg").textContent = un===0
+    ? "All 27 questions answered. Once submitted, you cannot change your answers."
+    : un+" question"+(un>1?"s are":" is")+" still unanswered. Once submitted, you cannot change your answers.";
+  document.getElementById("modal").classList.add("show");
+}
+function closeModal(){ document.getElementById("modal").classList.remove("show"); }
+
+function scoreIt(){
+  const parts = {A:0,B:0,C:0,D:0};
+  let total = 0, correct = 0;
+  QUESTIONS.forEach((q,i)=>{
+    if(answers[i]===q.key){ parts[q.part]+=q.marks; total+=q.marks; correct++; }
+  });
+  return {parts, total:Math.round(total*100)/100, correct};
+}
+
+async function submitTest(auto){
+  if(submitted) return;
+  submitted = true;
+  closeModal();
+  clearInterval(timerId);
+  window.removeEventListener("beforeunload", warnLeave);
+  document.getElementById("testbar").style.display = "none";
+  show("s-done");
+
+  const s = scoreIt();
+  const devices = [...document.querySelectorAll(".b-device:checked")].map(c=>c.value).join(", ");
+  const income = (document.querySelector("input[name=b-income]:checked")||{}).value || "";
+  const payload = {
+    submitted_at: new Date().toISOString(),
+    role: role,
+    name: document.getElementById("f-name").value.trim(),
+    grade: role==="student" ? document.getElementById("f-grade").value : "",
+    school: role==="student" ? document.getElementById("f-school").value.trim() : "",
+    profession: role==="adult" ? document.getElementById("f-prof").value.trim() : "",
+    bg_transport: role==="student" ? document.getElementById("b-transport").value.trim() : "",
+    bg_parents: role==="student" ? document.getElementById("b-parents").value.trim() : "",
+    bg_area: role==="student" ? document.getElementById("b-area").value.trim() : "",
+    bg_devices: role==="student" ? devices : "",
+    bg_income: role==="student" ? income : "",
+    time_used: Math.round((TEST_MINUTES*60 - Math.max(secondsLeft,0))/60*10)/10 + " min",
+    auto_submitted: auto ? "yes (time up)" : "no",
+    correct_count: s.correct + " / " + QUESTIONS.length,
+    score_total: s.total + " / 25",
+    wrong_questions: QUESTIONS.map((q,i)=>
+      answers[i]===q.key ? null :
+      "Q"+(i+1)+(answers[i] ? " (picked "+answers[i]+", key "+q.key+")" : " (blank, key "+q.key+")")
+    ).filter(Boolean).join("; ") || "None - all correct"
+  };
+  QUESTIONS.forEach((q,i)=>{
+    payload["q"+(i+1)] = answers[i] ? (answers[i]===q.key ? "OK" : "X ("+answers[i]+")") : "blank";
+  });
+
+  let sent = false;
+  // 1) Email via FormSubmit
+  if(RESULTS_EMAIL && !RESULTS_EMAIL.startsWith("YOUR_EMAIL")){
+    try{
+      const r = await fetch("https://formsubmit.co/ajax/"+RESULTS_EMAIL, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","Accept":"application/json"},
+        body: JSON.stringify({_subject:"FinLit attempt: "+payload.name+" ("+payload.role+") — "+payload.score_total, ...payload})
+      });
+      if(r.ok) sent = true;
+    }catch(e){ console.error("FormSubmit failed", e); }
+  }
+  // 2) Google Sheets webhook
+  if(SHEETS_WEBHOOK){
+    try{
+      await fetch(SHEETS_WEBHOOK, {method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain"}, body: JSON.stringify(payload)});
+      sent = true;
+    }catch(e){ console.error("Sheets webhook failed", e); }
+  }
+  if(!sent){
+    console.log("SUBMISSION PAYLOAD:", JSON.stringify(payload, null, 2));
+    document.getElementById("err-send").style.display = "block";
+  }
+}
+</script>
+</body>
+</html>
