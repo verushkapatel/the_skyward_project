@@ -16,14 +16,14 @@
  * After that, every new test submission rebuilds the dashboard and charts.
  * You can also use FinLit → Rebuild dashboard from the spreadsheet menu.
  *
- * Q22 key is B. Q25 key is B. Profession and correct-count are not stored.
+ * Q22 key is A (₹50 lakh). Q25 key is B. Profession and correct-count are not stored.
  */
 
 var KEYS = [
   "B","B","C","B","C",
   "B","C","D","B","C","B","C",
   "C","B","C","D","C","C","C","A",
-  "C","B","B","C","B","B","B"
+  "C","A","B","C","B","B","B"
 ];
 
 var MARKS = [
