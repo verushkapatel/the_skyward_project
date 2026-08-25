@@ -1,30 +1,29 @@
 /**
  * FinLit Index · Pune 2026 — Google Sheets collector
  *
- * Paste this over the existing Apps Script bound to your results spreadsheet.
+ * Spreadsheet:
+ * https://docs.google.com/spreadsheets/d/1cntlU1VebqoA2AZE9Vqa1VQ6st-jW8xYNZwVD-Yp044/edit
  *
- * 1. Open the Google Sheet that already receives test results
+ * INSTALL (once)
+ * 1. Open that spreadsheet
  * 2. Extensions → Apps Script
- * 3. Delete the old code and paste this entire file
- * 4. Save
- * 5. Deploy → Manage deployments → the existing Web app → pencil →
+ * 3. Replace ALL code with this file and Save
+ * 4. Select setup from the function dropdown → Run
+ *    Grant permissions when asked
+ * 5. Deploy → Manage deployments → pencil on the Web app
  *    Version: New version → Deploy
- *    Keep the same URL so the website does not need to change
  *
- * After the next submission, the spreadsheet will contain:
- *   Responses          — one clean row per student
- *   Dashboard          — totals, charts, score bands, part averages
- *   Question Analysis  — % correct per question
- *   Demographics       — grade, school, transport, income, devices
+ * After that, every new test submission rebuilds the dashboard and charts.
+ * You can also use FinLit → Rebuild dashboard from the spreadsheet menu.
  *
- * The answer key is used here only to score. It is not shown on the website.
+ * Q22 key is B. Profession and correct-count are not stored.
  */
 
 var KEYS = [
   "B","B","C","B","C",
   "B","C","D","B","C","B","C",
   "C","B","C","D","C","C","C","A",
-  "C","A","B","C","D","B","B"
+  "C","B","B","C","D","B","B"
 ];
 
 var MARKS = [
@@ -34,25 +33,32 @@ var MARKS = [
   0.5,0.5,0.5,0.5,0.5,0.5,0.5
 ];
 
-var PARTS = [
-  "A","A","A","A","A",
-  "B","B","B","B","B","B","B",
-  "C","C","C","C","C","C","C","C",
-  "D","D","D","D","D","D","D"
-];
-
+var PARTS = "AAAAABBBBBBBCCCCCCCCDDDDDDD".split("");
 var PART_MAX = { A: 2.5, B: 7, C: 12, D: 3.5 };
+var NAVY = "#0f2438";
+var CREAM = "#f7f5f0";
+var GOLD = "#a89468";
+var WHITE = "#fffcf7";
+
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu("FinLit")
+    .addItem("Rebuild dashboard", "setup")
+    .addToUi();
+}
 
 function doGet() {
+  setup();
   return ContentService
-    .createTextOutput("FinLit Index collector is running.")
+    .createTextOutput("FinLit dashboard rebuilt.")
     .setMimeType(ContentService.MimeType.TEXT);
 }
 
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
-    recordAttempt(data);
+    ingestAttempt_(data);
+    rebuildAll_();
     return ContentService
       .createTextOutput(JSON.stringify({ ok: true }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -63,175 +69,266 @@ function doPost(e) {
   }
 }
 
-function recordAttempt(data) {
+function setup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var scored = scorePayload(data);
-  var responses = getOrCreateSheet_(ss, "Responses");
-  ensureResponseHeaders_(responses);
-  responses.appendRow(buildResponseRow_(data, scored));
-  rebuildDashboard_(ss, responses);
+  migrateOldData_(ss);
+  rebuildAll_();
 }
 
-function scorePayload(data) {
+function rebuildAll_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var responses = getOrCreateSheet_(ss, "Responses");
+  rescoreResponses_(responses);
+  var data = readResponses_(responses);
+  buildDashboard_(ss, data);
+  buildQuestionAnalysis_(ss, data);
+  buildDemographics_(ss, data);
+  hideUnusedSheets_(ss);
+}
+
+function ingestAttempt_(data) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = getOrCreateSheet_(ss, "Responses");
+  ensureResponseHeaders_(sheet);
+  sheet.appendRow(buildResponseRow_(data, scoreChoices_(extractChoices_(data))));
+}
+
+function extractChoices_(data) {
   var choices = [];
-  var correctFlags = [];
+  for (var i = 0; i < 27; i++) {
+    choices.push(parseChoice_(data["q" + (i + 1) + "_choice"] || data["q" + (i + 1)], i));
+  }
+  return choices;
+}
+
+function parseChoice_(raw, index) {
+  raw = String(raw || "").trim();
+  if (!raw || raw === "blank") return "";
+  if (raw === "OK") {
+    // Older rows stored OK instead of the letter. Q22 used to be keyed as A.
+    return index === 21 ? "A" : KEYS[index];
+  }
+  var letter = raw.match(/\b([ABCD])\b/);
+  return letter ? letter[1] : "";
+}
+
+function scoreChoices_(choices) {
   var parts = { A: 0, B: 0, C: 0, D: 0 };
   var total = 0;
-  var correct = 0;
   var missed = [];
-
   for (var i = 0; i < 27; i++) {
-    var choice = pickChoice_(data, i);
-    var ok = choice && choice === KEYS[i];
-    choices.push(choice || "blank");
-    correctFlags.push(ok ? 1 : 0);
-    if (ok) {
+    var choice = choices[i] || "";
+    if (choice && choice === KEYS[i]) {
       parts[PARTS[i]] += MARKS[i];
       total += MARKS[i];
-      correct++;
     } else {
       missed.push("Q" + (i + 1) + (choice ? " (" + choice + ")" : " (blank)"));
     }
   }
-
   return {
-    choices: choices,
-    correctFlags: correctFlags,
+    choices: choices.map(function (c) { return c || "blank"; }),
     parts: parts,
     total: Math.round(total * 100) / 100,
-    correct: correct,
-    missed: missed.length ? missed.join("; ") : "None — all correct"
+    missed: missed.length ? missed.join("; ") : "None"
   };
-}
-
-function pickChoice_(data, i) {
-  var n = i + 1;
-  var raw = data["q" + n + "_choice"] || data["q" + n] || "";
-  raw = String(raw).trim();
-  if (!raw || raw === "blank") return "";
-  var letter = raw.match(/\b([ABCD])\b/);
-  if (letter) return letter[1];
-  if (raw === "OK") return KEYS[i];
-  return "";
 }
 
 function responseHeaders_() {
   var headers = [
     "Timestamp", "Name", "Email", "Grade", "School",
     "Transport", "Parents occupation", "Area", "Devices", "Income",
-    "Time used (min)", "Auto submitted", "Score / 25", "Correct / 27",
+    "Time used (min)", "Timed out", "Score / 25",
     "Part A / 2.5", "Part B / 7", "Part C / 12", "Part D / 3.5",
     "Missed questions"
   ];
-  for (var i = 1; i <= 27; i++) {
-    headers.push("Q" + i);
-    headers.push("Q" + i + " correct");
-  }
+  for (var i = 1; i <= 27; i++) headers.push("Q" + i);
   return headers;
 }
 
 function ensureResponseHeaders_(sheet) {
   var headers = responseHeaders_();
+  var width = Math.max(sheet.getLastColumn(), headers.length);
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sheet.getRange(1, 1, 1, headers.length)
-      .setFontWeight("bold")
-      .setBackground("#111111")
-      .setFontColor("#ffffff")
-      .setWrap(true);
-    sheet.setFrozenRows(1);
-    sheet.setFrozenColumns(5);
-    sheet.setColumnWidth(1, 170);
-    sheet.setColumnWidth(2, 160);
-    sheet.setColumnWidth(5, 180);
-    sheet.setColumnWidth(19, 280);
-    return;
-  }
-  var existing = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  if (existing.join("|") !== headers.join("|")) {
+  } else {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sheet.getRange(1, 1, 1, headers.length)
-      .setFontWeight("bold")
-      .setBackground("#111111")
-      .setFontColor("#ffffff");
+  }
+  sheet.getRange(1, 1, 1, headers.length)
+    .setFontWeight("bold")
+    .setBackground(NAVY)
+    .setFontColor(WHITE)
+    .setWrap(true);
+  sheet.setFrozenRows(1);
+  sheet.setFrozenColumns(5);
+  sheet.setColumnWidth(1, 170);
+  sheet.setColumnWidth(2, 160);
+  sheet.setColumnWidth(5, 180);
+  sheet.setColumnWidth(18, 280);
+  if (width > headers.length) {
+    sheet.deleteColumns(headers.length + 1, width - headers.length);
   }
 }
 
 function buildResponseRow_(data, scored) {
   var timeMin = data.time_used_min;
   if (timeMin === undefined || timeMin === null || timeMin === "") {
-    var parsed = String(data.time_used || "").replace(" min", "");
-    timeMin = Number(parsed) || "";
+    timeMin = Number(String(data.time_used || "").replace(" min", "")) || "";
   }
+  var timedOut = String(data.auto_submitted || "").toLowerCase().indexOf("yes") !== -1 ? "Yes" : "No";
   var row = [
     data.submitted_at || new Date().toISOString(),
     data.name || "",
     data.email || "",
     data.grade || "",
     data.school || "",
-    data.bg_transport || "",
+    data.bg_transport || data.transport || "",
     data.bg_parents || "",
     data.bg_area || "",
     data.bg_devices || "",
     data.bg_income || "",
     timeMin,
-    data.auto_submitted || "",
+    timedOut,
     scored.total,
-    scored.correct,
     scored.parts.A,
     scored.parts.B,
     scored.parts.C,
     scored.parts.D,
     scored.missed
   ];
-  for (var i = 0; i < 27; i++) {
-    row.push(scored.choices[i]);
-    row.push(scored.correctFlags[i]);
+  return row.concat(scored.choices);
+}
+
+function migrateOldData_(ss) {
+  var names = ss.getSheets().map(function (s) { return s.getName(); });
+  var source = null;
+  if (names.indexOf("Responses") !== -1 && ss.getSheetByName("Responses").getLastRow() > 1) {
+    source = ss.getSheetByName("Responses");
+  } else if (names.indexOf("Sheet1") !== -1 && ss.getSheetByName("Sheet1").getLastRow() > 1) {
+    source = ss.getSheetByName("Sheet1");
   }
-  return row;
+  if (!source) {
+    ensureResponseHeaders_(getOrCreateSheet_(ss, "Responses"));
+    return;
+  }
+
+  var values = source.getDataRange().getValues();
+  if (values.length < 2) {
+    ensureResponseHeaders_(getOrCreateSheet_(ss, "Responses"));
+    return;
+  }
+
+  var headers = values[0].map(function (h) { return String(h); });
+  var looksNew = headers.indexOf("Score / 25") !== -1 && headers.indexOf("profession") === -1 && headers.indexOf("correct_count") === -1;
+  var rows = [];
+  for (var r = 1; r < values.length; r++) {
+    var rec = {};
+    headers.forEach(function (h, c) { rec[h] = values[r][c]; });
+    if (!(rec.name || rec.Name || rec.q1 || rec.Q1)) continue;
+    if (looksNew) {
+      var choices = [];
+      for (var i = 0; i < 27; i++) choices.push(parseChoice_(rec["Q" + (i + 1)], i));
+      rows.push(buildResponseRow_({
+        submitted_at: rec["Timestamp"] || rec.submitted_at,
+        name: rec.Name || rec.name,
+        email: rec.Email || rec.email || "",
+        grade: rec.Grade || rec.grade,
+        school: rec.School || rec.school,
+        bg_transport: rec.Transport || rec.bg_transport,
+        bg_parents: rec["Parents occupation"] || rec.bg_parents,
+        bg_area: rec.Area || rec.bg_area,
+        bg_devices: rec.Devices || rec.bg_devices,
+        bg_income: rec.Income || rec.bg_income,
+        time_used_min: rec["Time used (min)"] || rec.time_used,
+        auto_submitted: rec["Timed out"] === "Yes" ? "yes" : rec.auto_submitted
+      }, scoreChoices_(choices)));
+    } else {
+      var oldChoices = [];
+      for (var j = 0; j < 27; j++) oldChoices.push(parseChoice_(rec["q" + (j + 1)], j));
+      rows.push(buildResponseRow_({
+        submitted_at: rec.submitted_at,
+        name: rec.name,
+        email: rec.email || "",
+        grade: rec.grade,
+        school: rec.school,
+        bg_transport: rec.bg_transport,
+        bg_parents: rec.bg_parents,
+        bg_area: rec.bg_area,
+        bg_devices: rec.bg_devices,
+        bg_income: rec.bg_income,
+        time_used: rec.time_used,
+        auto_submitted: rec.auto_submitted
+      }, scoreChoices_(oldChoices)));
+    }
+  }
+
+  var dest = getOrCreateSheet_(ss, "Responses");
+  dest.clear();
+  ensureResponseHeaders_(dest);
+  if (rows.length) dest.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
 }
 
-function getOrCreateSheet_(ss, name) {
-  var sheet = ss.getSheetByName(name);
-  if (!sheet) sheet = ss.insertSheet(name);
-  return sheet;
-}
-
-function rebuildDashboard_(ss, responses) {
-  var data = readResponses_(responses);
-  buildDashboard_(ss, data);
-  buildQuestionAnalysis_(ss, data);
-  buildDemographics_(ss, data);
+function rescoreResponses_(sheet) {
+  ensureResponseHeaders_(sheet);
+  var last = sheet.getLastRow();
+  if (last < 2) return;
+  var values = sheet.getRange(2, 1, last - 1, sheet.getLastColumn()).getValues();
+  var headers = responseHeaders_();
+  var out = values.map(function (row) {
+    var choices = [];
+    for (var i = 0; i < 27; i++) choices.push(parseChoice_(row[18 + i], i));
+    var scored = scoreChoices_(choices);
+    var data = {
+      submitted_at: row[0],
+      name: row[1],
+      email: row[2],
+      grade: row[3],
+      school: row[4],
+      bg_transport: row[5],
+      bg_parents: row[6],
+      bg_area: row[7],
+      bg_devices: row[8],
+      bg_income: row[9],
+      time_used_min: row[10],
+      auto_submitted: String(row[11]).toLowerCase().indexOf("yes") !== -1 ? "yes" : "no"
+    };
+    var built = buildResponseRow_(data, scored);
+    while (built.length < headers.length) built.push("");
+    return built.slice(0, headers.length);
+  });
+  sheet.getRange(2, 1, out.length, headers.length).setValues(out);
 }
 
 function readResponses_(sheet) {
   var last = sheet.getLastRow();
-  if (last < 2) {
-    return { rows: [], n: 0 };
-  }
+  if (last < 2) return { rows: [], n: 0 };
   var values = sheet.getRange(2, 1, last - 1, sheet.getLastColumn()).getValues();
   var rows = values.filter(function (r) { return String(r[1]).trim() !== ""; });
   return { rows: rows, n: rows.length };
+}
+
+function styleTitle_(range, size) {
+  range.setFontFamily("Georgia")
+    .setFontWeight("bold")
+    .setFontColor(NAVY)
+    .setFontSize(size);
 }
 
 function buildDashboard_(ss, data) {
   var sheet = getOrCreateSheet_(ss, "Dashboard");
   sheet.clear();
   sheet.setHiddenGridlines(true);
-  sheet.setColumnWidth(1, 220);
-  sheet.setColumnWidth(2, 90);
-  sheet.setColumnWidth(3, 90);
-  sheet.setColumnWidth(4, 24);
-  sheet.setColumnWidth(5, 180);
-  sheet.setColumnWidth(6, 90);
-  sheet.setColumnWidth(7, 90);
+  sheet.setTabColor(GOLD);
+  sheet.getRange("A1:L45").setBackground(CREAM);
+  [220, 100, 110, 24, 200, 90, 90, 24, 160, 90].forEach(function (w, i) {
+    sheet.setColumnWidth(i + 1, w);
+  });
 
-  sheet.getRange("A1").setValue("FinLit Index  ·  Pune 2026").setFontWeight("bold").setFontSize(18);
-  sheet.getRange("A2").setValue("Updated automatically after every submission. Scores are out of 25.").setFontColor("#666666");
+  styleTitle_(sheet.getRange("A1"), 22);
+  sheet.getRange("A1").setValue("The Skyward Project  ·  FinLit Index");
+  sheet.getRange("A2").setValue("Pune 2026  ·  scores out of 25  ·  Q22 key is B").setFontColor(GOLD).setFontStyle("italic");
 
   var n = data.n;
   var scores = data.rows.map(function (r) { return Number(r[12]) || 0; });
-  var correctCounts = data.rows.map(function (r) { return Number(r[13]) || 0; });
   var timedOut = data.rows.filter(function (r) {
     return String(r[11]).toLowerCase().indexOf("yes") !== -1;
   }).length;
@@ -240,108 +337,100 @@ function buildDashboard_(ss, data) {
     ["Attempts", n],
     ["Average score", n ? round1_(avg_(scores)) : 0],
     ["Median score", n ? round1_(median_(scores)) : 0],
-    ["Highest score", n ? round1_(Math.max.apply(null, scores)) : 0],
-    ["Lowest score", n ? round1_(Math.min.apply(null, scores)) : 0],
-    ["Average correct", n ? round1_(avg_(correctCounts)) : 0],
+    ["Highest", n ? round1_(Math.max.apply(null, scores)) : 0],
+    ["Lowest", n ? round1_(Math.min.apply(null, scores)) : 0],
     ["Timed out", timedOut]
   ];
-  sheet.getRange("A4").setValue("Overview").setFontWeight("bold").setFontSize(13);
+  sheet.getRange("A4").setValue("Overview").setFontWeight("bold").setFontColor(NAVY).setFontSize(13);
   sheet.getRange(5, 1, kpis.length, 2).setValues(kpis);
-  sheet.getRange(5, 1, kpis.length, 1).setFontColor("#666666");
-  sheet.getRange(5, 2, kpis.length, 1).setFontWeight("bold").setFontSize(14);
+  sheet.getRange(5, 1, kpis.length, 1).setFontColor("#5c574f");
+  sheet.getRange(5, 2, kpis.length, 1).setFontWeight("bold").setFontSize(16).setFontColor(NAVY);
 
   var bands = [
     ["Score band", "Students"],
-    ["0 to 5", countBand_(scores, 0, 5)],
-    ["5+ to 10", countBand_(scores, 5, 10, true)],
-    ["10+ to 15", countBand_(scores, 10, 15, true)],
-    ["15+ to 20", countBand_(scores, 15, 20, true)],
-    ["20 to 25", countBand_(scores, 20, 25)]
+    ["0–5", countBand_(scores, 0, 5)],
+    ["5–10", countBand_(scores, 5, 10, true)],
+    ["10–15", countBand_(scores, 10, 15, true)],
+    ["15–20", countBand_(scores, 15, 20, true)],
+    ["20–25", countBand_(scores, 20, 25)]
   ];
-  sheet.getRange("A14").setValue("Score distribution").setFontWeight("bold").setFontSize(13);
-  sheet.getRange(15, 1, bands.length, 2).setValues(bands);
-  sheet.getRange(15, 1, 1, 2).setFontWeight("bold").setBackground("#111111").setFontColor("#ffffff");
+  sheet.getRange("A13").setValue("Score distribution").setFontWeight("bold").setFontColor(NAVY).setFontSize(13);
+  sheet.getRange(14, 1, bands.length, 2).setValues(bands);
+  paintHeader_(sheet.getRange(14, 1, 1, 2));
 
+  var gradeTable = [["Grade", "Students", "Average"]];
   var gradeMap = groupAvg_(data.rows, 3, 12);
-  var gradeTable = [["Grade", "Students", "Average score"]];
   ["9", "10", "11", "12"].forEach(function (g) {
     var item = gradeMap[g] || { count: 0, avg: 0 };
     gradeTable.push([g, item.count, item.count ? round1_(item.avg) : 0]);
   });
-  sheet.getRange("A23").setValue("By grade").setFontWeight("bold").setFontSize(13);
-  sheet.getRange(24, 1, gradeTable.length, 3).setValues(gradeTable);
-  sheet.getRange(24, 1, 1, 3).setFontWeight("bold").setBackground("#111111").setFontColor("#ffffff");
+  sheet.getRange("A22").setValue("By grade").setFontWeight("bold").setFontColor(NAVY).setFontSize(13);
+  sheet.getRange(23, 1, gradeTable.length, 3).setValues(gradeTable);
+  paintHeader_(sheet.getRange(23, 1, 1, 3));
 
   var partAvgs = [
     ["Part", "Average", "Maximum"],
-    ["A Warm up", n ? round1_(avg_(data.rows.map(function (r) { return Number(r[14]) || 0; }))) : 0, PART_MAX.A],
-    ["B Everyday", n ? round1_(avg_(data.rows.map(function (r) { return Number(r[15]) || 0; }))) : 0, PART_MAX.B],
-    ["C Read carefully", n ? round1_(avg_(data.rows.map(function (r) { return Number(r[16]) || 0; }))) : 0, PART_MAX.C],
-    ["D Market awareness", n ? round1_(avg_(data.rows.map(function (r) { return Number(r[17]) || 0; }))) : 0, PART_MAX.D]
+    ["A  Warm up", n ? round1_(avg_(col_(data.rows, 13))) : 0, PART_MAX.A],
+    ["B  Everyday", n ? round1_(avg_(col_(data.rows, 14))) : 0, PART_MAX.B],
+    ["C  Read carefully", n ? round1_(avg_(col_(data.rows, 15))) : 0, PART_MAX.C],
+    ["D  Market awareness", n ? round1_(avg_(col_(data.rows, 16))) : 0, PART_MAX.D]
   ];
-  sheet.getRange("A31").setValue("Part averages").setFontWeight("bold").setFontSize(13);
-  sheet.getRange(32, 1, partAvgs.length, 3).setValues(partAvgs);
-  sheet.getRange(32, 1, 1, 3).setFontWeight("bold").setBackground("#111111").setFontColor("#ffffff");
+  sheet.getRange("A30").setValue("Part averages").setFontWeight("bold").setFontColor(NAVY).setFontSize(13);
+  sheet.getRange(31, 1, partAvgs.length, 3).setValues(partAvgs);
+  paintHeader_(sheet.getRange(31, 1, 1, 3));
 
   sheet.getCharts().forEach(function (c) { sheet.removeChart(c); });
-  if (n === 0) return;
-
-  addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange("A15:B20"), 4, 5, "Students in each score band");
-  addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange("A24:C28"), 19, 5, "Average score by grade");
-  addChart_(sheet, Charts.ChartType.BAR, sheet.getRange("A32:B36"), 32, 5, "Average marks by part");
+  addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange("A14:B19"), 4, 5, "Students in each score band");
+  addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange("A23:C27"), 18, 5, "Average score by grade");
+  addChart_(sheet, Charts.ChartType.BAR, sheet.getRange("A31:B35"), 31, 5, "Average marks by part");
 }
 
 function buildQuestionAnalysis_(ss, data) {
   var sheet = getOrCreateSheet_(ss, "Question Analysis");
   sheet.clear();
+  sheet.setTabColor(NAVY);
   sheet.setFrozenRows(1);
   var n = data.n;
-  var headers = ["Question", "Part", "Marks", "Correct", "Attempts", "% correct", "Most common answer"];
-  var rows = [headers];
+  var table = [["Question", "Part", "Marks", "Correct answer", "Got it right", "Attempts", "% correct", "Most common pick"]];
   var chartRows = [["Question", "% correct"]];
 
   for (var i = 0; i < 27; i++) {
-    var choiceCol = 19 + i * 2;
-    var okCol = 20 + i * 2;
-    var correct = 0;
+    var right = 0;
     var counts = { A: 0, B: 0, C: 0, D: 0, blank: 0 };
     data.rows.forEach(function (r) {
-      if (Number(r[okCol]) === 1) correct++;
-      var ch = String(r[choiceCol] || "blank");
-      if (counts[ch] === undefined) counts[ch] = 0;
-      counts[ch]++;
+      var ch = parseChoice_(r[18 + i], i) || "blank";
+      counts[ch] = (counts[ch] || 0) + 1;
+      if (ch === KEYS[i]) right++;
     });
-    var top = "—";
-    var topN = -1;
+    var top = "—", topN = -1;
     Object.keys(counts).forEach(function (k) {
       if (counts[k] > topN) { topN = counts[k]; top = k; }
     });
-    var pct = n ? Math.round((correct / n) * 1000) / 10 : 0;
-    rows.push(["Q" + (i + 1), PARTS[i], MARKS[i], correct, n, pct, n ? top : "—"]);
+    var pct = n ? Math.round((right / n) * 1000) / 10 : 0;
+    table.push(["Q" + (i + 1), PARTS[i], MARKS[i], KEYS[i], right, n, pct, n ? top : "—"]);
     chartRows.push(["Q" + (i + 1), pct]);
   }
 
-  sheet.getRange(1, 1, rows.length, headers.length).setValues(rows);
-  sheet.getRange(1, 1, 1, headers.length)
-    .setFontWeight("bold")
-    .setBackground("#111111")
-    .setFontColor("#ffffff");
-  sheet.getRange(1, 20, chartRows.length, 2).setValues(chartRows);
-  sheet.getRange(1, 20, 1, 2).setFontWeight("bold").setBackground("#111111").setFontColor("#ffffff");
-  sheet.hideColumns(20, 2);
+  sheet.getRange(1, 1, table.length, 8).setValues(table);
+  paintHeader_(sheet.getRange(1, 1, 1, 8));
+  sheet.getRange(1, 10, chartRows.length, 2).setValues(chartRows);
+  sheet.hideColumns(10, 2);
   sheet.setColumnWidth(1, 90);
-  sheet.setColumnWidth(7, 170);
+  sheet.setColumnWidth(8, 160);
+  sheet.getRange("A1:H1").setNote("Correct answers are for evaluators. They are not shown on the student website.");
 
   sheet.getCharts().forEach(function (c) { sheet.removeChart(c); });
-  if (n === 0) return;
-  addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange(1, 20, chartRows.length, 2), 1, 9, "% of students correct on each question");
+  addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange(1, 10, chartRows.length, 2), 1, 9, "% of students correct on each question");
 }
 
 function buildDemographics_(ss, data) {
   var sheet = getOrCreateSheet_(ss, "Demographics");
   sheet.clear();
-  sheet.getRange("A1").setValue("Background patterns").setFontWeight("bold").setFontSize(16);
-  sheet.getRange("A2").setValue("These tables refresh after every submission.").setFontColor("#666666");
+  sheet.setTabColor(GOLD);
+  sheet.getRange("A1:P40").setBackground(CREAM);
+  styleTitle_(sheet.getRange("A1"), 18);
+  sheet.getRange("A1").setValue("Background patterns");
+  sheet.getRange("A2").setValue("Refreshes after every submission and whenever you run Rebuild dashboard.").setFontColor("#5c574f");
 
   writeGroupTable_(sheet, 4, 1, "By school", groupAvg_(data.rows, 4, 12), ["School", "Students", "Average score"]);
   writeGroupTable_(sheet, 4, 5, "By transport", groupAvg_(data.rows, 5, 12), ["Transport", "Students", "Average score"]);
@@ -355,25 +444,21 @@ function buildDemographics_(ss, data) {
     });
   });
   var deviceTable = [["Device", "Students"]];
-  Object.keys(deviceCounts).sort().forEach(function (k) {
-    deviceTable.push([k, deviceCounts[k]]);
-  });
+  Object.keys(deviceCounts).sort().forEach(function (k) { deviceTable.push([k, deviceCounts[k]]); });
   if (deviceTable.length === 1) deviceTable.push(["—", 0]);
-  sheet.getRange(20, 5).setValue("Devices owned").setFontWeight("bold").setFontSize(12);
+  sheet.getRange(20, 5).setValue("Devices owned").setFontWeight("bold").setFontColor(NAVY);
   sheet.getRange(21, 5, deviceTable.length, 2).setValues(deviceTable);
-  sheet.getRange(21, 5, 1, 2).setFontWeight("bold").setBackground("#111111").setFontColor("#ffffff");
+  paintHeader_(sheet.getRange(21, 5, 1, 2));
 
   sheet.getCharts().forEach(function (c) { sheet.removeChart(c); });
-  if (data.n === 0) return;
-
-  var schoolCount = Math.max(Object.keys(groupAvg_(data.rows, 4, 12)).length, 1);
-  addChart_(sheet, Charts.ChartType.BAR, sheet.getRange(5, 1, 1 + schoolCount, 3), 4, 12, "Average score by school");
-  var transportCount = Math.max(Object.keys(groupAvg_(data.rows, 5, 12)).length, 1);
-  addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange(5, 5, 1 + transportCount, 2), 20, 12, "How students come to school");
+  var schoolN = Math.max(Object.keys(groupAvg_(data.rows, 4, 12)).length, 1);
+  var transportN = Math.max(Object.keys(groupAvg_(data.rows, 5, 12)).length, 1);
+  addChart_(sheet, Charts.ChartType.BAR, sheet.getRange(5, 1, 1 + schoolN, 3), 4, 12, "Average score by school");
+  addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange(5, 5, 1 + transportN, 2), 20, 12, "How students come to school");
 }
 
 function writeGroupTable_(sheet, row, col, title, grouped, headers) {
-  sheet.getRange(row, col).setValue(title).setFontWeight("bold").setFontSize(12);
+  sheet.getRange(row, col).setValue(title).setFontWeight("bold").setFontColor(NAVY).setFontSize(12);
   var keys = Object.keys(grouped).sort();
   var table = [headers];
   if (!keys.length) table.push(["—", 0, 0]);
@@ -381,7 +466,11 @@ function writeGroupTable_(sheet, row, col, title, grouped, headers) {
     table.push([k || "—", grouped[k].count, round1_(grouped[k].avg)]);
   });
   sheet.getRange(row + 1, col, table.length, 3).setValues(table);
-  sheet.getRange(row + 1, col, 1, 3).setFontWeight("bold").setBackground("#111111").setFontColor("#ffffff");
+  paintHeader_(sheet.getRange(row + 1, col, 1, 3));
+}
+
+function paintHeader_(range) {
+  range.setFontWeight("bold").setBackground(NAVY).setFontColor(WHITE);
 }
 
 function addChart_(sheet, type, range, row, col, title) {
@@ -390,14 +479,27 @@ function addChart_(sheet, type, range, row, col, title) {
     .addRange(range)
     .setOption("title", title)
     .setOption("legend", { position: "none" })
-    .setOption("colors", ["#111111"])
-    .setOption("backgroundColor", "#ffffff")
-    .setOption("hAxis", { textStyle: { color: "#111111" }, titleTextStyle: { color: "#111111" } })
-    .setOption("vAxis", { textStyle: { color: "#111111" }, minValue: 0 })
-    .setOption("titleTextStyle", { color: "#111111", fontSize: 12, bold: true })
+    .setOption("colors", [NAVY])
+    .setOption("backgroundColor", WHITE)
+    .setOption("hAxis", { textStyle: { color: NAVY } })
+    .setOption("vAxis", { textStyle: { color: NAVY }, minValue: 0 })
+    .setOption("titleTextStyle", { color: NAVY, fontSize: 12, bold: true })
     .setPosition(row, col, 0, 0)
     .build();
   sheet.insertChart(chart);
+}
+
+function hideUnusedSheets_(ss) {
+  var keep = { Responses: 1, Dashboard: 1, "Question Analysis": 1, Demographics: 1 };
+  ss.getSheets().forEach(function (s) {
+    if (!keep[s.getName()] && ss.getSheets().length > 1) {
+      try { s.hideSheet(); } catch (e) {}
+    }
+  });
+}
+
+function getOrCreateSheet_(ss, name) {
+  return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
 function groupAvg_(rows, keyIndex, valueIndex) {
@@ -412,6 +514,10 @@ function groupAvg_(rows, keyIndex, valueIndex) {
     map[k].avg = map[k].count ? map[k].sum / map[k].count : 0;
   });
   return map;
+}
+
+function col_(rows, i) {
+  return rows.map(function (r) { return Number(r[i]) || 0; });
 }
 
 function avg_(arr) {

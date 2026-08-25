@@ -401,7 +401,7 @@ const QUESTIONS = [
   {part:"C",marks:1.5,text:"Aarav is 25. Kamlesh is 58. Each has ₹5,00,000 to invest. Both put 80% into shares (higher risk, higher possible return) and 20% into bonds (lower risk, steady return).",prompt:"Why is this same split much riskier for Kamlesh than for Aarav?",opts:["Older people always earn less than younger people","Share prices fall faster the older you get","Aarav has 30 or more years to recover if shares crash. Kamlesh may need this money in the next few years, so a crash near then would hurt him badly","Bonds are legally required to make up more of the portfolio after age 50"],key:"C"},
   {part:"C",marks:1.5,text:"The Kulkarnis save ₹10,000 every month in a savings account that grows at 3% a year. Prices are going up by 6% a year. They want to save ₹15,00,000 in 10 years for their child's college, using today's college prices as their target.",prompt:"What is likely to go wrong with their plan?",opts:["The money is growing slower than prices are rising, and college itself will cost more in 10 years than it does today","The plan is fine. ₹10,000 a month is just too little","Given ten years, the growth will overtake rising prices on its own","Everything works out if they simply delay the goal by two years"],key:"A"},
   {part:"D",marks:0.5,text:"What is the minimum amount someone needs to invest in an Alternative Investment Fund (AIF) in India?",opts:["₹10 lakh","₹50 lakh","₹1 crore","₹5 crore"],key:"C"},
-  {part:"D",marks:0.5,text:"What is the minimum amount someone needs to invest in a Portfolio Management Service (PMS) in India?",opts:["₹50 lakh","₹25 lakh","₹1 crore","₹10 lakh"],key:"A"},
+  {part:"D",marks:0.5,text:"What is the minimum amount someone needs to invest in a Portfolio Management Service (PMS) in India?",opts:["₹50 lakh","₹25 lakh","₹1 crore","₹10 lakh"],key:"B"},
   {part:"D",marks:0.5,text:"What is the most common minimum monthly amount to start an SIP in a mutual fund?",opts:["₹100","₹500","₹1,000","₹5,000"],key:"B"},
   {part:"D",marks:0.5,text:"Which of these has grown the most in India over the last 30 years?",opts:["Gold","Real estate","Shares of Indian companies","Bank fixed deposits"],key:"C"},
   {part:"D",marks:0.5,text:"Which of these has grown the most in India over the last 10 years?",opts:["Bank fixed deposits","Shares of Indian companies","Real estate","Gold"],key:"D"},
@@ -711,7 +711,6 @@ async function submitTest(auto){
     email: bg.email,
     grade: bg.grade,
     school: bg.school,
-    profession: "",
     bg_transport: bg.bg_transport,
     bg_parents: bg.bg_parents,
     bg_area: bg.bg_area,
@@ -720,8 +719,6 @@ async function submitTest(auto){
     time_used: timeUsedMin + " min",
     time_used_min: timeUsedMin,
     auto_submitted: auto ? "yes (time up)" : "no",
-    correct_count: s.correct + " / " + QUESTIONS.length,
-    correct: s.correct,
     score_total: s.total + " / 25",
     score: s.total,
     part_a: s.parts.A,
@@ -734,10 +731,7 @@ async function submitTest(auto){
     ).filter(Boolean).join("; ") || "None - all correct"
   };
   QUESTIONS.forEach((q, i) => {
-    const choice = answers[i] || "";
-    payload["q" + (i + 1)] = choice ? (choice === q.key ? "OK" : "X (" + choice + ")") : "blank";
-    payload["q" + (i + 1) + "_choice"] = choice || "blank";
-    payload["q" + (i + 1) + "_correct"] = choice === q.key ? 1 : 0;
+    payload["q" + (i + 1)] = answers[i] || "blank";
   });
 
   let sent = false;
