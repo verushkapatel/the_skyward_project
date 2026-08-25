@@ -4,48 +4,55 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FinLit Index | The Skyward Project</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Serif:ital,wght@0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=Playfair+Display:ital,wght@0,500;0,700;0,900;1,400;1,500&display=swap" rel="stylesheet">
 <style>
   :root{
-    --ink:#111111;
-    --muted:#6b6b6b;
-    --faint:#9a9a9a;
-    --line:#e6e6e6;
-    --line-strong:#cfcfcf;
-    --bg:#ffffff;
-    --wash:#f4f4f4;
-    --paper:#fafafa;
+    --ink:#0f2438;
+    --body:#2b2b2b;
+    --muted:#6f6a63;
+    --accent:#a89468;
+    --line:#d9d5cc;
+    --line-strong:#c4bfb3;
+    --bg:#f7f5f0;
+    --paper:#fffcf7;
+    --wash:#efeae1;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   html,body{min-height:100%;}
   body{
-    font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-    background:var(--bg); color:var(--ink); line-height:1.55;
+    font-family:"Newsreader",Georgia,"Times New Roman",serif;
+    background:var(--bg); color:var(--body); line-height:1.6;
     -webkit-font-smoothing:antialiased;
   }
-  button,input,select{font:inherit; color:inherit;}
-  .wrap{max-width:720px; margin:0 auto; padding:40px 22px 96px;}
+  button,input,select{font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:inherit;}
+  .wrap{max-width:720px; margin:0 auto; padding:36px 22px 96px;}
   .screen{display:none;}
   .screen.active{display:block;}
   h1{
-    font-family:"IBM Plex Serif",Georgia,serif;
-    font-size:2rem; font-weight:600; letter-spacing:-0.03em; line-height:1.2;
+    font-family:"Playfair Display",Georgia,serif;
+    font-size:2.05rem; font-weight:700; color:var(--ink); letter-spacing:-0.02em; line-height:1.18;
   }
   .kicker{
-    font-size:.72rem; font-weight:600; letter-spacing:.16em;
-    text-transform:uppercase; color:var(--muted); margin-bottom:10px;
+    font-family:"Inter",sans-serif;
+    font-size:.68rem; font-weight:600; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--accent); margin-bottom:10px;
   }
-  .meta{color:var(--muted); font-size:.95rem; margin-top:10px;}
-  .rule{height:1px; background:var(--line); border:0; margin:28px 0;}
-  .card{border:1px solid var(--line); background:var(--bg); padding:28px 26px; margin-top:24px;}
+  .meta{color:var(--muted); font-size:.98rem; margin-top:10px;}
+  .rule{height:1px; background:var(--line); border:0; margin:22px 0;}
+  .rules{display:block; height:4px; border-top:1px solid var(--ink); border-bottom:1px solid var(--ink); margin:22px 0 26px;}
+  .card{border:1px solid var(--line); background:var(--paper); padding:28px 26px; margin-top:24px;}
   .field{margin-bottom:18px;}
   .field:last-child{margin-bottom:0;}
-  label.lbl{display:block; font-size:.82rem; font-weight:600; margin-bottom:7px;}
+  label.lbl{
+    display:block; font-family:"Inter",sans-serif; font-size:.78rem;
+    font-weight:600; letter-spacing:.04em; color:var(--ink); margin-bottom:7px;
+  }
   input[type=text], input[type=email], select{
     width:100%; padding:11px 12px; border:1px solid var(--line-strong);
-    background:#fff; border-radius:0;
+    background:var(--paper); border-radius:0; color:var(--ink);
   }
   input[type=text]:focus, input[type=email]:focus, select:focus{
     outline:2px solid var(--ink); outline-offset:1px; border-color:var(--ink);
@@ -53,86 +60,123 @@
   .row2{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
   @media(max-width:560px){
     .row2{grid-template-columns:1fr;}
-    h1{font-size:1.65rem;}
-    .wrap{padding:28px 16px 80px;}
+    h1{font-size:1.6rem;}
+    .wrap{padding:24px 16px 80px;}
     .card{padding:22px 18px;}
+    .masthead__name{font-size:1.55rem;}
+    .mission{font-size:1.15rem;}
   }
   .note{
-    font-size:.88rem; color:var(--muted); background:var(--paper);
-    border-left:2px solid var(--ink); padding:12px 14px; margin:4px 0 20px;
+    font-size:.92rem; color:var(--muted); background:var(--wash);
+    border-left:2px solid var(--accent); padding:12px 14px; margin:4px 0 20px;
   }
   .checks,.radios{display:flex; flex-direction:column; gap:8px;}
   .checks label, .radios label{
-    display:flex; align-items:center; gap:10px; font-size:.93rem;
-    border:1px solid var(--line); padding:11px 12px; cursor:pointer; background:#fff;
+    display:flex; align-items:center; gap:10px; font-size:.95rem;
+    border:1px solid var(--line); padding:11px 12px; cursor:pointer; background:var(--paper);
   }
   .checks label:hover, .radios label:hover{border-color:var(--ink);}
   .checks input, .radios input{accent-color:var(--ink); width:15px; height:15px; flex-shrink:0;}
   .btn{
     display:inline-block; padding:12px 22px; border:1px solid var(--ink);
-    background:var(--ink); color:#fff; font-weight:600; font-size:.95rem; cursor:pointer;
+    background:var(--ink); color:var(--paper); font-weight:600; font-size:.88rem;
+    letter-spacing:.04em; cursor:pointer;
   }
-  .btn:hover{background:#000;}
+  .btn:hover{background:#16324a;}
   .btn:disabled{opacity:.38; cursor:not-allowed;}
-  .btn.ghost{background:#fff; color:var(--ink);}
+  .btn.ghost{background:transparent; color:var(--ink);}
   .btn.ghost:hover{background:var(--wash);}
   .actions{margin-top:26px; display:flex; gap:10px; justify-content:flex-end;}
-  .err{color:#111; font-size:.85rem; margin-top:12px; display:none; font-weight:600;}
+  .err{color:var(--ink); font-family:"Inter",sans-serif; font-size:.85rem; margin-top:12px; display:none; font-weight:600;}
+
+  .masthead{text-align:center; margin-bottom:8px;}
+  .masthead__emblem{
+    width:86px; height:86px; display:block; margin:0 auto 14px;
+    border-radius:50%;
+  }
+  .masthead__folio{
+    font-family:"Inter",sans-serif; font-size:.68rem; font-weight:600;
+    letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin-bottom:10px;
+  }
+  .masthead__name{
+    font-family:"Playfair Display",Georgia,serif; font-weight:900; color:var(--ink);
+    font-size:1.85rem; letter-spacing:-0.02em; line-height:1.1;
+  }
+  .masthead__name em{font-style:italic; font-weight:500;}
+  .mission{
+    font-family:"Playfair Display",Georgia,serif; font-style:italic; font-weight:500;
+    color:var(--ink); font-size:1.32rem; line-height:1.35; text-align:center;
+    max-width:38rem; margin:0 auto;
+  }
+  .brand-row{
+    display:flex; align-items:center; gap:10px;
+  }
+  .brand-row img{width:28px; height:28px; border-radius:50%; flex-shrink:0;}
+  .brand-row span{
+    font-family:"Playfair Display",Georgia,serif; font-weight:700;
+    color:var(--ink); font-size:.95rem;
+  }
 
   .bar{
-    position:sticky; top:0; z-index:10; background:#fff;
-    border-bottom:1px solid var(--line); padding:12px 20px;
+    position:sticky; top:0; z-index:10; background:var(--bg);
+    border-bottom:1px solid var(--ink); padding:10px 20px;
   }
   .bar .inner{
     max-width:720px; margin:0 auto; width:100%;
     display:flex; align-items:center; justify-content:space-between; gap:16px;
   }
-  #timer{font-variant-numeric:tabular-nums; font-weight:700; font-size:1.12rem; letter-spacing:.02em;}
-  #timer.low{text-decoration:underline; text-underline-offset:4px;}
-  #progress{font-size:.84rem; color:var(--muted);}
+  #timer{
+    font-family:"Inter",sans-serif; font-variant-numeric:tabular-nums;
+    font-weight:700; font-size:1.05rem; letter-spacing:.02em; color:var(--ink);
+  }
+  #timer.low{color:var(--ink); text-decoration:underline; text-underline-offset:4px;}
+  #progress{font-family:"Inter",sans-serif; font-size:.78rem; color:var(--muted); letter-spacing:.04em; text-transform:uppercase;}
   .time-track{flex:1; height:2px; background:var(--line); max-width:180px;}
   .time-fill{height:100%; background:var(--ink); width:100%;}
 
   .nav-grid{display:grid; grid-template-columns:repeat(9,1fr); gap:6px; margin-top:4px;}
   @media(max-width:560px){.nav-grid{grid-template-columns:repeat(7,1fr);}}
   .nav-grid button{
-    padding:8px 0; border:1px solid var(--line); background:#fff;
+    padding:8px 0; border:1px solid var(--line); background:var(--paper);
     font-size:.78rem; font-weight:600; color:var(--muted); cursor:pointer;
   }
-  .nav-grid button.done{background:var(--ink); color:#fff; border-color:var(--ink);}
-  .nav-grid button.cur{outline:2px solid var(--ink); outline-offset:1px;}
+  .nav-grid button.done{background:var(--ink); color:var(--paper); border-color:var(--ink);}
+  .nav-grid button.cur{outline:2px solid var(--accent); outline-offset:1px; color:var(--ink);}
 
-  .qpart{font-size:.7rem; text-transform:uppercase; letter-spacing:.14em; color:var(--muted); font-weight:700;}
-  .qnum{font-family:"IBM Plex Serif",Georgia,serif; font-weight:600; margin:8px 0 2px; font-size:1.25rem;}
-  .qmarks{font-size:.8rem; color:var(--muted); margin-bottom:16px;}
-  .qnote{font-size:.84rem; color:var(--muted); font-style:italic; margin:-6px 0 16px;}
-  .qtext{font-size:1rem; margin-bottom:14px;}
+  .qpart{
+    font-family:"Inter",sans-serif; font-size:.68rem; text-transform:uppercase;
+    letter-spacing:.14em; color:var(--accent); font-weight:700;
+  }
+  .qnum{font-family:"Playfair Display",Georgia,serif; font-weight:700; color:var(--ink); margin:8px 0 2px; font-size:1.3rem;}
+  .qmarks{font-family:"Inter",sans-serif; font-size:.78rem; color:var(--muted); margin-bottom:16px;}
+  .qnote{font-size:.92rem; color:var(--muted); font-style:italic; margin:-6px 0 16px;}
+  .qtext{font-size:1.05rem; margin-bottom:14px;}
   .qtext p + p{margin-top:10px;}
   .qtext ul{margin:10px 0 12px 0; padding-left:0; list-style:none;}
   .qtext li{padding:4px 0 4px 16px; position:relative;}
-  .qtext li:before{content:"·"; position:absolute; left:2px; font-weight:700;}
+  .qtext li:before{content:"·"; position:absolute; left:2px; font-weight:700; color:var(--accent);}
   .opts{display:flex; flex-direction:column; gap:8px;}
   .opts label{
     display:flex; gap:12px; align-items:flex-start; border:1px solid var(--line);
-    padding:13px 14px; cursor:pointer; font-size:.95rem; background:#fff;
+    padding:13px 14px; cursor:pointer; font-size:.98rem; background:var(--paper);
   }
   .opts label:hover{border-color:var(--ink);}
-  .opts label.sel{border-color:var(--ink); background:var(--paper); box-shadow:inset 3px 0 0 var(--ink);}
+  .opts label.sel{border-color:var(--ink); background:var(--wash); box-shadow:inset 3px 0 0 var(--accent);}
   .opts input{accent-color:var(--ink); margin-top:3px; flex-shrink:0;}
-  .opt-key{font-weight:700; flex-shrink:0; min-width:1.4em;}
+  .opt-key{font-family:"Inter",sans-serif; font-weight:700; color:var(--ink); flex-shrink:0; min-width:1.4em;}
   .qnav-btns{display:flex; justify-content:space-between; margin-top:18px; gap:10px;}
   .locked .opts label, .locked .nav-grid button, .locked .qnav-btns button, .locked .btn{
     pointer-events:none; opacity:.55;
   }
 
   .modal-bg{
-    position:fixed; inset:0; background:rgba(17,17,17,.45);
+    position:fixed; inset:0; background:rgba(15,36,56,.45);
     display:none; align-items:center; justify-content:center; z-index:50; padding:20px;
   }
   .modal-bg.show{display:flex;}
-  .modal{background:#fff; border:1px solid var(--ink); padding:28px 24px; max-width:420px; width:100%;}
-  .modal h3{font-family:"IBM Plex Serif",Georgia,serif; font-size:1.2rem; margin-bottom:8px;}
-  .modal p{font-size:.92rem; color:var(--muted);}
+  .modal{background:var(--paper); border:1px solid var(--ink); padding:28px 24px; max-width:420px; width:100%;}
+  .modal h3{font-family:"Playfair Display",Georgia,serif; font-size:1.25rem; color:var(--ink); margin-bottom:8px;}
+  .modal p{font-size:.95rem; color:var(--muted);}
 
   .done-mark{
     width:42px; height:42px; border:1px solid var(--ink);
@@ -144,11 +188,11 @@
     transform:rotate(45deg);
   }
   .center{text-align:center;}
-  ol.inst{padding-left:20px; font-size:.95rem;}
+  ol.inst{padding-left:20px; font-size:1.02rem;}
   ol.inst li{margin-bottom:10px;}
   .section-title{
-    font-family:"IBM Plex Serif",Georgia,serif;
-    font-size:1.15rem; font-weight:600; margin:8px 0 6px;
+    font-family:"Playfair Display",Georgia,serif;
+    font-size:1.2rem; font-weight:700; color:var(--ink); margin:8px 0 6px;
   }
 </style>
 </head>
@@ -156,7 +200,10 @@
 
 <div class="bar" id="testbar" style="display:none;">
   <div class="inner">
-    <span id="progress">0 / 27 answered</span>
+    <div class="brand-row">
+      <img src="assets/skyward-emblem.png" alt="" width="28" height="28">
+      <span id="progress">0 / 27 answered</span>
+    </div>
     <div class="time-track" aria-hidden="true"><div class="time-fill" id="timefill"></div></div>
     <span id="timer">30:00</span>
   </div>
@@ -165,10 +212,16 @@
 <div class="wrap">
 
   <section class="screen active" id="s-details">
-    <p class="kicker">The Skyward Project · FinLit Index · Pune 2026</p>
-    <h1>Common Financial Literacy Assessment</h1>
-    <p class="meta">For students of grades 9 to 12 · 27 questions · 25 marks · 30 minutes</p>
-    <hr class="rule">
+    <header class="masthead">
+      <img class="masthead__emblem" src="assets/skyward-emblem.png" alt="The Skyward Project" width="452" height="459">
+      <p class="masthead__folio">Vol. I · FinLit Index · Pune 2026</p>
+      <p class="masthead__name"><em>The</em> Skyward Project</p>
+      <span class="rules" aria-hidden="true"></span>
+      <p class="mission">Financial literacy should not be a privilege tied to school type, family background, or academic stream.</p>
+      <span class="rules" aria-hidden="true"></span>
+      <h1>Common Financial Literacy Assessment</h1>
+      <p class="meta">For students of grades 9 to 12 · 27 questions · 25 marks · 30 minutes</p>
+    </header>
 
     <div class="card">
       <p class="section-title">Student details</p>
@@ -253,6 +306,10 @@
   </section>
 
   <section class="screen" id="s-inst">
+    <div class="brand-row" style="margin-bottom:18px;">
+      <img src="assets/skyward-emblem.png" alt="" width="28" height="28">
+      <span>The Skyward Project</span>
+    </div>
     <p class="kicker">Before you start</p>
     <h1>Instructions</h1>
     <div class="card">
@@ -290,7 +347,7 @@
 
   <section class="screen" id="s-done">
     <div class="card center" style="margin-top:48px; padding:48px 24px;">
-      <div class="done-mark" aria-hidden="true"></div>
+      <img src="assets/skyward-emblem.png" alt="" width="64" height="64" style="width:64px;height:64px;border-radius:50%;margin:0 auto 18px;display:block;">
       <p class="kicker" id="done-kicker">Submitted</p>
       <h1 id="done-title">Your responses have been recorded</h1>
       <p class="meta" id="done-copy" style="margin-top:12px;">Thank you. You may now close this page.<br>This test looked at how you think about money as a general skill. If some questions felt hard, that is useful information.</p>
