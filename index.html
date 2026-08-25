@@ -43,11 +43,11 @@
   .field{margin-bottom:18px;}
   .field:last-child{margin-bottom:0;}
   label.lbl{display:block; font-size:.82rem; font-weight:600; margin-bottom:7px;}
-  input[type=text], select{
+  input[type=text], input[type=email], select{
     width:100%; padding:11px 12px; border:1px solid var(--line-strong);
     background:#fff; border-radius:0;
   }
-  input[type=text]:focus, select:focus{
+  input[type=text]:focus, input[type=email]:focus, select:focus{
     outline:2px solid var(--ink); outline-offset:1px; border-color:var(--ink);
   }
   .row2{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
@@ -180,8 +180,8 @@
       </div>
       <div class="row2">
         <div class="field">
-          <label class="lbl" for="f-roll">Roll number</label>
-          <input type="text" id="f-roll" autocomplete="off">
+          <label class="lbl" for="f-email">Email <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
+          <input type="email" id="f-email" autocomplete="email">
         </div>
         <div class="field">
           <label class="lbl" for="f-grade">Grade</label>
@@ -562,7 +562,7 @@ function collectBackground(){
   const transport = (document.querySelector("input[name=b-transport]:checked") || {}).value || "";
   return {
     name: document.getElementById("f-name").value.trim(),
-    roll_no: document.getElementById("f-roll").value.trim(),
+    email: document.getElementById("f-email").value.trim(),
     grade: document.getElementById("f-grade").value,
     school: document.getElementById("f-school").value.trim(),
     bg_transport: transport,
@@ -593,7 +593,7 @@ function restore(){
     timedOut = !!data.timedOut;
     if(data.bg){
       document.getElementById("f-name").value = data.bg.name || "";
-      document.getElementById("f-roll").value = data.bg.roll_no || "";
+      document.getElementById("f-email").value = data.bg.email || "";
       document.getElementById("f-grade").value = data.bg.grade || "";
       document.getElementById("f-school").value = data.bg.school || "";
       document.getElementById("b-parents").value = data.bg.bg_parents || "";
@@ -651,7 +651,7 @@ async function submitTest(auto){
     submitted_at: new Date().toISOString(),
     role: "student",
     name: bg.name,
-    roll_no: bg.roll_no,
+    email: bg.email,
     grade: bg.grade,
     school: bg.school,
     profession: "",

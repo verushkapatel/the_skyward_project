@@ -117,7 +117,7 @@ function pickChoice_(data, i) {
 
 function responseHeaders_() {
   var headers = [
-    "Timestamp", "Name", "Roll No", "Grade", "School",
+    "Timestamp", "Name", "Email", "Grade", "School",
     "Transport", "Parents occupation", "Area", "Devices", "Income",
     "Time used (min)", "Auto submitted", "Score / 25", "Correct / 27",
     "Part A / 2.5", "Part B / 7", "Part C / 12", "Part D / 3.5",
@@ -166,7 +166,7 @@ function buildResponseRow_(data, scored) {
   var row = [
     data.submitted_at || new Date().toISOString(),
     data.name || "",
-    data.roll_no || "",
+    data.email || "",
     data.grade || "",
     data.school || "",
     data.bg_transport || "",
