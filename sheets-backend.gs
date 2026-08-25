@@ -16,14 +16,14 @@
  * After that, every new test submission rebuilds the dashboard and charts.
  * You can also use FinLit → Rebuild dashboard from the spreadsheet menu.
  *
- * Q22 key is B. Profession and correct-count are not stored.
+ * Q22 key is B. Q25 key is B. Profession and correct-count are not stored.
  */
 
 var KEYS = [
   "B","B","C","B","C",
   "B","C","D","B","C","B","C",
   "C","B","C","D","C","C","C","A",
-  "C","B","B","C","D","B","B"
+  "C","B","B","C","B","B","B"
 ];
 
 var MARKS = [
@@ -325,7 +325,7 @@ function buildDashboard_(ss, data) {
 
   styleTitle_(sheet.getRange("A1"), 22);
   sheet.getRange("A1").setValue("The Skyward Project  ·  FinLit Index");
-  sheet.getRange("A2").setValue("Pune 2026  ·  scores out of 25  ·  Q22 key is B").setFontColor(GOLD).setFontStyle("italic");
+  sheet.getRange("A2").setValue("Pune 2026  ·  scores out of 25").setFontColor(GOLD).setFontStyle("italic");
 
   var n = data.n;
   var scores = data.rows.map(function (r) { return Number(r[12]) || 0; });
