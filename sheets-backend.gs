@@ -180,12 +180,12 @@ function buildResponseRow_(data, scored) {
     data.name || "",
     data.email || "",
     data.grade || "",
-    data.school || "",
+    canonicalSchool_(data.school || ""),
     data.bg_transport || data.transport || "",
     data.bg_parents || "",
     data.bg_area || "",
     data.bg_devices || "",
-    data.bg_income || "",
+    data.bg_income ? canonicalIncome_(data.bg_income) : "",
     timeMin,
     timedOut,
     scored.total,
@@ -318,7 +318,7 @@ function buildDashboard_(ss, data) {
   sheet.clear();
   sheet.setHiddenGridlines(true);
   sheet.setTabColor(GOLD);
-  sheet.getRange("A1:L45").setBackground(CREAM);
+  sheet.getRange("A1:L55").setBackground(CREAM);
   [220, 100, 110, 24, 200, 90, 90, 24, 160, 90].forEach(function (w, i) {
     sheet.setColumnWidth(i + 1, w);
   });
@@ -379,10 +379,16 @@ function buildDashboard_(ss, data) {
   sheet.getRange(31, 1, partAvgs.length, 3).setValues(partAvgs);
   paintHeader_(sheet.getRange(31, 1, 1, 3));
 
+  var incomeTable = incomeTable_(data.rows);
+  sheet.getRange("A38").setValue("Income and performance").setFontWeight("bold").setFontColor(NAVY).setFontSize(13);
+  sheet.getRange(39, 1, incomeTable.length, 3).setValues(incomeTable);
+  paintHeader_(sheet.getRange(39, 1, 1, 3));
+
   sheet.getCharts().forEach(function (c) { sheet.removeChart(c); });
   addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange("A14:B19"), 4, 5, "Students in each score band");
   addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange("A23:C27"), 18, 5, "Average score by grade");
   addChart_(sheet, Charts.ChartType.BAR, sheet.getRange("A31:B35"), 31, 5, "Average marks by part");
+  addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange(39, 1, incomeTable.length, 2), 38, 9, "Average score by family income");
 }
 
 function buildQuestionAnalysis_(ss, data) {
@@ -427,14 +433,17 @@ function buildDemographics_(ss, data) {
   var sheet = getOrCreateSheet_(ss, "Demographics");
   sheet.clear();
   sheet.setTabColor(GOLD);
-  sheet.getRange("A1:P40").setBackground(CREAM);
+  sheet.getRange("A1:P50").setBackground(CREAM);
   styleTitle_(sheet.getRange("A1"), 18);
   sheet.getRange("A1").setValue("Background patterns");
   sheet.getRange("A2").setValue("Refreshes after every submission and whenever you run Rebuild dashboard.").setFontColor("#5c574f");
 
-  writeGroupTable_(sheet, 4, 1, "By school", groupAvg_(data.rows, 4, 12), ["School", "Students", "Average score"]);
+  writeGroupTable_(sheet, 4, 1, "By school", groupAvg_(data.rows, 4, 12, canonicalSchool_), ["School", "Students", "Average score"]);
   writeGroupTable_(sheet, 4, 5, "By transport", groupAvg_(data.rows, 5, 12), ["Transport", "Students", "Average score"]);
-  writeGroupTable_(sheet, 4, 9, "By income", groupAvg_(data.rows, 9, 12), ["Income", "Students", "Average score"]);
+  var incomeTable = incomeTable_(data.rows);
+  sheet.getRange(4, 9).setValue("Income and performance").setFontWeight("bold").setFontColor(NAVY).setFontSize(12);
+  sheet.getRange(5, 9, incomeTable.length, 3).setValues(incomeTable);
+  paintHeader_(sheet.getRange(5, 9, 1, 3));
   writeGroupTable_(sheet, 20, 1, "By area", groupAvg_(data.rows, 7, 12), ["Area", "Students", "Average score"]);
 
   var deviceCounts = {};
@@ -451,10 +460,11 @@ function buildDemographics_(ss, data) {
   paintHeader_(sheet.getRange(21, 5, 1, 2));
 
   sheet.getCharts().forEach(function (c) { sheet.removeChart(c); });
-  var schoolN = Math.max(Object.keys(groupAvg_(data.rows, 4, 12)).length, 1);
+  var schoolN = Math.max(Object.keys(groupAvg_(data.rows, 4, 12, canonicalSchool_)).length, 1);
   var transportN = Math.max(Object.keys(groupAvg_(data.rows, 5, 12)).length, 1);
   addChart_(sheet, Charts.ChartType.BAR, sheet.getRange(5, 1, 1 + schoolN, 3), 4, 12, "Average score by school");
   addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange(5, 5, 1 + transportN, 2), 20, 12, "How students come to school");
+  addChart_(sheet, Charts.ChartType.COLUMN, sheet.getRange(5, 9, incomeTable.length, 2), 32, 9, "Average score by family income");
 }
 
 function writeGroupTable_(sheet, row, col, title, grouped, headers) {
@@ -502,10 +512,11 @@ function getOrCreateSheet_(ss, name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
-function groupAvg_(rows, keyIndex, valueIndex) {
+function groupAvg_(rows, keyIndex, valueIndex, canonFn) {
   var map = {};
   rows.forEach(function (r) {
     var key = String(r[keyIndex] || "").trim() || "Not given";
+    if (canonFn) key = canonFn(key) || "Not given";
     if (!map[key]) map[key] = { count: 0, sum: 0 };
     map[key].count++;
     map[key].sum += Number(r[valueIndex]) || 0;
@@ -514,6 +525,54 @@ function groupAvg_(rows, keyIndex, valueIndex) {
     map[k].avg = map[k].count ? map[k].sum / map[k].count : 0;
   });
   return map;
+}
+
+function canonicalSchool_(name) {
+  var raw = String(name || "").trim();
+  if (!raw || raw === "Not given") return raw;
+  var n = raw.toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  var compact = n.replace(/ /g, "");
+  if (compact === "dais") return "DAIS";
+  if (/\bdais\b/.test(n)) return "DAIS";
+  if (n.indexOf("dhirubhai") !== -1 && n.indexOf("ambani") !== -1) return "DAIS";
+  return raw;
+}
+
+function canonicalIncome_(label) {
+  var s = String(label || "").trim();
+  if (!s) return "Not given";
+  var n = s.replace(/[–—]/g, "-").replace(/\s+/g, " ").trim();
+  if (/0\s*[-to]+\s*25/.test(n)) return "₹0 to 25,000";
+  if (/25,001\s*[-to]+\s*50/.test(n)) return "₹25,001 to 50,000";
+  if (/50,001\s*[-to]+\s*1/.test(n)) return "₹50,001 to 1,00,000";
+  if (/1,00,001\s*[-to]+\s*2/.test(n)) return "₹1,00,001 to 2,50,000";
+  if (/2,50,001|above/i.test(n)) return "₹2,50,001 or above";
+  if (/not sure/i.test(n)) return "Not sure";
+  return s;
+}
+
+function incomeTable_(rows) {
+  var map = groupAvg_(rows, 9, 12, canonicalIncome_);
+  var order = [
+    "₹0 to 25,000",
+    "₹25,001 to 50,000",
+    "₹50,001 to 1,00,000",
+    "₹1,00,001 to 2,50,000",
+    "₹2,50,001 or above",
+    "Not sure"
+  ];
+  var table = [["Income", "Average score", "Students"]];
+  var seen = {};
+  order.forEach(function (k) {
+    if (!map[k]) return;
+    table.push([k, round1_(map[k].avg), map[k].count]);
+    seen[k] = 1;
+  });
+  Object.keys(map).forEach(function (k) {
+    if (!seen[k]) table.push([k, round1_(map[k].avg), map[k].count]);
+  });
+  if (table.length === 1) table.push(["—", 0, 0]);
+  return table;
 }
 
 function col_(rows, i) {
