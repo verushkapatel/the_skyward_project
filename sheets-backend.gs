@@ -8,9 +8,9 @@
  * 1. Open that spreadsheet
  * 2. Extensions → Apps Script
  * 3. Replace ALL code with this file and Save
- * 4. Select fixShiftedRowsNow → Run
- *    Review permissions if a popup appears, then look at the spreadsheet
- *    (not the script tab) for a brief FinLit toast. Do not run setup first.
+ * 4. Select authorizeMailNow → Run
+ *    Review permissions if a popup appears. That allows Gmail and starts
+ *    the sender that waits one hour after each student finishes.
  * 5. Deploy → Manage deployments → pencil on the Web app
  *    Version: New version → Deploy
  *
@@ -19,9 +19,10 @@
  *
  * Scores come from the quiz itself. Running setup does not rescore old rows.
  * Every submission must include a real email. That address is stored in
- * column C on Responses and is mailed the score, missed questions, and
- * explanations (newspaper-style HTML). First Gmail run asks for permission.
- * for permission. Deploy → New version or the live form keeps using old code.
+ * column C on Responses. Results are mailed about one hour after the
+ * student finishes (newspaper-style HTML). Run authorizeMailNow once so
+ * Gmail and the hourly sender are allowed. Deploy → New version or the
+ * live form keeps using old code.
  * If scores were wiped to 0, restore a Google Sheets version from before that
  * happened: File → Version history → See version history.
  *
@@ -269,13 +270,17 @@ var NAVY = "#0f2438";
 var CREAM = "#f7f5f0";
 var GOLD = "#a89468";
 var WHITE = "#fffcf7";
+var EMAIL_DELAY_MS = 60 * 60 * 1000;
+var EMAIL_TRIGGER_FN = "sendDueStudentEmails";
 
 function onOpen() {
+  try { ensureResultEmailTrigger_(); } catch (e) {}
   SpreadsheetApp.getUi()
     .createMenu("FinLit")
     .addItem("Rebuild dashboard", "setup")
     .addItem("Repair shifted rows", "fixShiftedRowsNow")
-    .addItem("Email student results", "emailStudentsFromSheetNow")
+    .addItem("Email due results", "sendDueStudentEmails")
+    .addItem("Email student results now", "emailStudentsFromSheetNow")
     .addItem("Fill pending answers", "fillPendingChoices_")
     .addToUi();
 }
@@ -339,8 +344,9 @@ function responseUsedRow_(sheet) {
 }
 
 function responseWidth_(sheet) {
-  var width = Number(sheet.getLastColumn()) || 45;
-  if (width < 45) width = 45;
+  var needed = responseHeaders_().length;
+  var width = Number(sheet.getLastColumn()) || needed;
+  if (width < needed) width = needed;
   if (width > 60) width = 60;
   return width;
 }
@@ -525,11 +531,13 @@ function sendPreviewEmailToMe() {
 }
 
 function authorizeMailNow() {
+  ensureResultEmailTrigger_();
   sendMail_(
     "verushkapatel4@gmail.com",
     "FinLit mail is allowed",
-    "This is only a permission check. You can delete it."
+    "This is only a permission check. You can delete it. Student results now go out about an hour after they finish."
   );
+  notify_("Mail allowed. Result emails go out about an hour after each student finishes.");
 }
 
 function ingestAttempt_(data) {
@@ -544,9 +552,9 @@ function ingestAttempt_(data) {
   var scored = scoreAttempt_(data);
   appendResponseRow_(sheet, buildResponseRow_(data, scored));
   try {
-    sendStudentFeedback_(data, scored);
+    ensureResultEmailTrigger_();
   } catch (err) {
-    console.error("Student feedback email failed: " + err);
+    console.error("Could not install result-email trigger: " + err);
   }
 }
 
@@ -618,42 +626,103 @@ function sendStudentFeedback_(data, scored) {
   );
 }
 
-function emailStudentsFromSheetNow() {
+function emailedAtIndex_() {
+  return responseHeaders_().length - 1;
+}
+
+function parseSubmittedAt_(raw) {
+  if (raw instanceof Date && !isNaN(raw.getTime())) return raw;
+  var s = String(raw || "").trim();
+  if (!s) return null;
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function rowAlreadyEmailed_(row) {
+  var idx = emailedAtIndex_();
+  if (!row || row.length <= idx) return false;
+  return String(row[idx] || "").trim() !== "";
+}
+
+function markRowEmailed_(sheet, rowNumber) {
+  sheet.getRange(rowNumber, emailedAtIndex_() + 1).setValue(new Date());
+}
+
+function scoredFromRow_(row) {
+  var choices = [];
+  var i;
+  for (i = 0; i < 27; i++) choices.push(parseChoice_(row[18 + i], i));
+  var scored = scoreChoices_(choices);
+  var submitted = parseScore_(row[12]);
+  if (submitted != null) scored.total = submitted;
+  return scored;
+}
+
+function shouldSendResultsForRow_(row, now, ignoreWait) {
+  if (!rowHasContent_(row)) return false;
+  var name = String(row[1] || "").trim();
+  if (isLockedStudent_(name) || /^anonymous$/i.test(name)) return false;
+  if (!validEmail_(row[2])) return false;
+  if (rowAlreadyEmailed_(row)) return false;
+  if (ignoreWait) return true;
+  var when = parseSubmittedAt_(row[0]);
+  if (!when) return false;
+  return now.getTime() - when.getTime() >= EMAIL_DELAY_MS;
+}
+
+function sendResultsForDueRows_(ignoreWait) {
   var sheet = getOrCreateSheet_(SpreadsheetApp.getActiveSpreadsheet(), "Responses");
+  ensureResponseHeaders_(sheet);
   var last = responseUsedRow_(sheet);
   if (last < 2) {
-    notify_("No response rows to email.");
+    if (ignoreWait) notify_("No response rows to email.");
     return;
   }
   var width = responseWidth_(sheet);
   var values = sheet.getRange(2, 1, last - 1, width).getValues();
+  var now = new Date();
   var sent = [];
   var skipped = [];
-  for (var r = 0; r < values.length; r++) {
-    if (!rowHasContent_(values[r])) continue;
-    var name = String(values[r][1] || "").trim();
-    if (isLockedStudent_(name) || /^anonymous$/i.test(name)) continue;
-    var email = String(values[r][2] || "").trim();
-    if (!validEmail_(email)) {
-      skipped.push(name || ("row " + (r + 2)));
-      continue;
-    }
-    var choices = [];
-    for (var i = 0; i < 27; i++) choices.push(parseChoice_(values[r][18 + i], i));
-    var scored = scoreChoices_(choices);
-    var submitted = parseScore_(values[r][12]);
-    if (submitted != null) scored.total = submitted;
+  var r, row, name, email;
+  for (r = 0; r < values.length; r++) {
+    row = values[r];
+    if (!shouldSendResultsForRow_(row, now, ignoreWait)) continue;
+    name = String(row[1] || "").trim();
+    email = String(row[2] || "").trim();
     try {
-      sendStudentFeedback_({ name: name, email: email }, scored);
+      sendStudentFeedback_({ name: name, email: email }, scoredFromRow_(row));
+      markRowEmailed_(sheet, r + 2);
       sent.push(name + " <" + email + ">");
     } catch (err) {
       skipped.push((name || email) + " (" + err + ")");
     }
   }
-  notify_(
-    (sent.length ? "Emailed " + sent.length + ": " + sent.join("; ") : "No emails sent.") +
-    (skipped.length ? " Skipped: " + skipped.join("; ") : "")
-  );
+  if (sent.length || skipped.length || ignoreWait) {
+    notify_(
+      (sent.length ? "Emailed " + sent.length + ": " + sent.join("; ") : "No emails sent.") +
+      (skipped.length ? " Failed: " + skipped.join("; ") : "")
+    );
+  }
+}
+
+function sendDueStudentEmails() {
+  sendResultsForDueRows_(false);
+}
+
+function emailStudentsFromSheetNow() {
+  sendResultsForDueRows_(true);
+}
+
+function ensureResultEmailTrigger_() {
+  var triggers = ScriptApp.getProjectTriggers();
+  var i;
+  for (i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === EMAIL_TRIGGER_FN) return;
+  }
+  ScriptApp.newTrigger(EMAIL_TRIGGER_FN)
+    .timeBased()
+    .everyMinutes(10)
+    .create();
 }
 
 function buildFeedbackText_(name, scored) {
@@ -784,6 +853,7 @@ function responseHeaders_() {
     "Missed questions"
   ];
   for (var i = 1; i <= 27; i++) headers.push("Q" + i);
+  headers.push("Results emailed at");
   return headers;
 }
 
@@ -834,7 +904,7 @@ function buildResponseRow_(data, scored) {
     scored.parts.D,
     scored.missed
   ];
-  return row.concat(scored.choices);
+  return row.concat(scored.choices, [""]);
 }
 
 function migrateOldData_(ss) {

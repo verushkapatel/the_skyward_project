@@ -322,7 +322,7 @@
         <li>Pick <b>one answer</b> per question. You can move between questions and change answers until you submit, or until time runs out.</li>
         <li>Use a rough sheet for any working out.</li>
         <li>When the timer ends, the test closes and your answers are sent automatically. Do not refresh or close this page during the test.</li>
-        <li>After you finish we email your score, the questions you missed, and why the correct option is right. Use an email you can check. Email is required.</li>
+        <li>After you finish we email your score, the questions you missed, and why the correct option is right. That letter arrives about an hour later. Email is required.</li>
       </ol>
       <p class="note" style="margin-top:22px; margin-bottom:0;">
         Financial decisions in real life depend on your family, your income, your community, and your goals. There is not one right answer for every household. This test does not measure what is right for your specific situation. It measures how you reason about money as a general skill. Answer what you think the best general answer is.
@@ -354,7 +354,7 @@
       <img src="assets/skyward-emblem.png" alt="" width="64" height="64" style="width:64px;height:64px;border-radius:50%;margin:0 auto 18px;display:block;">
       <p class="kicker" id="done-kicker">Submitted</p>
       <h1 id="done-title">Your responses have been recorded</h1>
-      <p class="meta" id="done-copy" style="margin-top:12px;">Thank you. We are sending your score, the questions you missed, and the explanations to your email. Check your inbox and spam in a few minutes. The mark is not shown on this page.</p>
+      <p class="meta" id="done-copy" style="margin-top:12px;">Thank you. Your score, the questions you missed, and the explanations will be emailed in about an hour. Check your inbox and spam then. The mark is not shown on this page.</p>
       <p class="err" id="err-send" style="margin-top:16px;">We had trouble sending your responses automatically. Please tell the administrator.</p>
       <div class="actions" style="justify-content:center;">
         <button class="btn ghost" type="button" onclick="newStudent()">New student</button>
@@ -602,7 +602,7 @@ function lockTest(timeUp){
 function applyTimedOutCopy(){
   document.getElementById("done-kicker").textContent = "Time is up";
   document.getElementById("done-title").textContent = "This test is now closed";
-  document.getElementById("done-copy").innerHTML = "The 30 minutes are over, so the paper can no longer be answered.<br>Your responses have been recorded. We are sending your score and explanations to your email.";
+  document.getElementById("done-copy").innerHTML = "The 30 minutes are over, so the paper can no longer be answered.<br>Your responses have been recorded. Your score and explanations will be emailed in about an hour.";
 }
 
 function buildNav(){
@@ -798,6 +798,14 @@ async function submitTest(auto){
   const s = scoreIt();
   const bg = collectBackground();
   markEmailTaken(bg.email);
+  const mail = bg.email || "the address you entered";
+  if(auto){
+    applyTimedOutCopy();
+  } else {
+    document.getElementById("done-kicker").textContent = "Submitted";
+    document.getElementById("done-title").textContent = "Your responses have been recorded";
+    document.getElementById("done-copy").innerHTML = "Thank you. Your score, the questions you missed, and the explanations will be emailed to " + mail + " in about an hour. Check your inbox and spam then. The mark is not shown on this page.";
+  }
   const timeUsedMin = Math.round((TEST_MINUTES * 60 - Math.max(remainingSeconds(), 0)) / 6) / 10;
   const payload = {
     version: "finlit-2026-v2",
