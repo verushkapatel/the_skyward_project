@@ -8,17 +8,19 @@
  * 1. Open that spreadsheet
  * 2. Extensions → Apps Script
  * 3. Replace ALL code with this file and Save
- * 4. Select setup from the function dropdown → Run
- *    Grant permissions when asked
+ * 4. Select fixShiftedRowsNow → Run
+ *    Review permissions if a popup appears, then look at the spreadsheet
+ *    (not the script tab) for a brief FinLit toast. Do not run setup first.
  * 5. Deploy → Manage deployments → pencil on the Web app
  *    Version: New version → Deploy
  *
- * After that, every new test submission rebuilds the dashboard and charts.
- * You can also use FinLit → Rebuild dashboard from the spreadsheet menu.
+ * Rebuild dashboard is optional and slower (charts). Use FinLit → Rebuild
+ * dashboard from the spreadsheet menu when you want charts refreshed.
  *
  * Scores come from the quiz itself. Running setup does not rescore old rows.
- * Every submission with a real email address is mailed the score, missed
- * questions, and explanations (newspaper-style HTML). First Gmail run asks
+ * Every submission must include a real email. That address is stored in
+ * column C on Responses and is mailed the score, missed questions, and
+ * explanations (newspaper-style HTML). First Gmail run asks for permission.
  * for permission. Deploy → New version or the live form keeps using old code.
  * If scores were wiped to 0, restore a Google Sheets version from before that
  * happened: File → Version history → See version history.
@@ -296,7 +298,6 @@ function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     ingestAttempt_(data);
-    rebuildAll_();
     return ContentService
       .createTextOutput(JSON.stringify({ ok: true }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -316,7 +317,6 @@ function setup() {
 function rebuildAll_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var responses = getOrCreateSheet_(ss, "Responses");
-  repairShiftedAttemptRows_();
   fillPendingChoices_();
   normalizeResponses_(responses);
   var data = readResponses_(responses);
@@ -324,6 +324,25 @@ function rebuildAll_() {
   buildQuestionAnalysis_(ss, data);
   buildDemographics_(ss, data);
   hideUnusedSheets_(ss);
+}
+
+function notify_(msg) {
+  Logger.log(msg);
+  try {
+    SpreadsheetApp.getActiveSpreadsheet().toast(String(msg).slice(0, 190), "FinLit", 15);
+  } catch (e) {}
+}
+
+function responseUsedRow_(sheet) {
+  var last = Number(sheet.getLastRow()) || 1;
+  return last > 400 ? 400 : last;
+}
+
+function responseWidth_(sheet) {
+  var width = Number(sheet.getLastColumn()) || 45;
+  if (width < 45) width = 45;
+  if (width > 60) width = 60;
+  return width;
 }
 
 function isLockedStudent_(name) {
@@ -363,9 +382,9 @@ function pendingChoicePlans_() {
 function fillPendingChoices_() {
   var sheet = getOrCreateSheet_(SpreadsheetApp.getActiveSpreadsheet(), "Responses");
   ensureResponseHeaders_(sheet);
-  var last = sheet.getLastRow();
+  var last = responseUsedRow_(sheet);
   if (last < 2) return;
-  var width = Math.max(sheet.getLastColumn(), 45);
+  var width = responseWidth_(sheet);
   var values = sheet.getRange(2, 1, last - 1, width).getValues();
   var plans = pendingChoicePlans_();
   var changed = false;
@@ -437,9 +456,9 @@ function repairShiftedAttemptRow_(row) {
 function repairShiftedAttemptRows_() {
   var sheet = getOrCreateSheet_(SpreadsheetApp.getActiveSpreadsheet(), "Responses");
   ensureResponseHeaders_(sheet);
-  var last = Math.max(sheet.getLastRow(), sheet.getDataRange().getLastRow());
+  var last = responseUsedRow_(sheet);
   if (last < 2) return { count: 0, names: [] };
-  var width = Math.max(sheet.getLastColumn(), 45);
+  var width = responseWidth_(sheet);
   var values = sheet.getRange(2, 1, last - 1, width).getValues();
   var names = [];
   for (var r = 0; r < values.length; r++) {
@@ -462,8 +481,9 @@ function rowHasContent_(row) {
 }
 
 function compactEmptyResponseRows_(sheet) {
-  var last = Math.max(sheet.getLastRow(), 2);
-  var width = Math.max(sheet.getLastColumn(), 45);
+  var last = responseUsedRow_(sheet);
+  if (last < 2) return;
+  var width = responseWidth_(sheet);
   var values = sheet.getRange(2, 1, last - 1, width).getValues();
   var kept = values.filter(rowHasContent_);
   if (kept.length === values.length) return;
@@ -473,18 +493,43 @@ function compactEmptyResponseRows_(sheet) {
 
 function fixShiftedRowsNow() {
   var result = repairShiftedAttemptRows_();
-  rebuildAll_();
-  var who = result.names.length ? result.names.join(", ") : "";
-  SpreadsheetApp.getUi().alert(
-    result.count
-      ? "Fixed " + result.count + " shifted row(s): " + who +
-        "\n\nIf Email is blank, they typed a name instead of an address. Put a real email in column C, then FinLit → Email student results."
-      : "No shifted rows found. If the sheet still looks wrong, confirm this script is attached to the FinLit Responses spreadsheet."
-  );
+  SpreadsheetApp.flush();
+  var msg = result.count
+    ? "Fixed " + result.count + " row(s): " + result.names.join(", ")
+    : "No shifted rows found. Open the Responses tab and check this script is bound to the FinLit spreadsheet.";
+  notify_(msg);
 }
 
 function fixKiaraNow() {
   fixShiftedRowsNow();
+}
+
+function sendMail_(to, subject, textBody, htmlBody) {
+  GmailApp.sendEmail(to, subject, textBody, {
+    htmlBody: htmlBody || textBody,
+    name: "The Skyward Project",
+    replyTo: "verushkapatel4@gmail.com"
+  });
+}
+
+function sendPreviewEmailToMe() {
+  var choices = ["D","B","C","B","C","B","C","B","A","C","A","C","C","D","C","C","C","C","C","B","A","B","B","B","B","B","A"];
+  var scored = scoreChoices_(choices);
+  sendMail_(
+    "verushkapatel4@gmail.com",
+    "Your FinLit Index results — The Skyward Project",
+    buildFeedbackText_("Jiya (preview)", scored),
+    buildFeedbackEmail_("Jiya (preview)", choices, scored)
+  );
+  notify_("Preview sent to verushkapatel4@gmail.com. Check Inbox and Sent.");
+}
+
+function authorizeMailNow() {
+  sendMail_(
+    "verushkapatel4@gmail.com",
+    "FinLit mail is allowed",
+    "This is only a permission check. You can delete it."
+  );
 }
 
 function ingestAttempt_(data) {
@@ -492,6 +537,9 @@ function ingestAttempt_(data) {
   var sheet = getOrCreateSheet_(ss, "Responses");
   ensureResponseHeaders_(sheet);
   data = normalizeIncoming_(data);
+  if (!validEmail_(data.email)) {
+    throw new Error("A real email address is required.");
+  }
   if (emailAlreadyUsed_(data.email)) return;
   var scored = scoreAttempt_(data);
   appendResponseRow_(sheet, buildResponseRow_(data, scored));
@@ -500,6 +548,11 @@ function ingestAttempt_(data) {
   } catch (err) {
     console.error("Student feedback email failed: " + err);
   }
+}
+
+function validEmail_(raw) {
+  var email = String(raw || "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function normalizeIncoming_(data) {
@@ -525,8 +578,8 @@ function appendResponseRow_(sheet, row) {
 }
 
 function nextResponseRow_(sheet) {
-  var last = Math.max(sheet.getLastRow(), 2);
-  var width = Math.max(sheet.getLastColumn(), 1);
+  var last = Math.max(responseUsedRow_(sheet), 2);
+  var width = responseWidth_(sheet);
   var values = sheet.getRange(2, 1, last - 1, width).getValues();
   for (var i = 0; i < values.length; i++) {
     if (!rowHasContent_(values[i])) return i + 2;
@@ -536,9 +589,9 @@ function nextResponseRow_(sheet) {
 
 function emailAlreadyUsed_(raw) {
   var email = String(raw || "").trim().toLowerCase();
-  if (!email || email.indexOf("@") < 1) return false;
+  if (!validEmail_(email)) return false;
   var sheet = getOrCreateSheet_(SpreadsheetApp.getActiveSpreadsheet(), "Responses");
-  var last = sheet.getLastRow();
+  var last = responseUsedRow_(sheet);
   if (last < 2) return false;
   var vals = sheet.getRange(2, 3, last - 1, 1).getValues();
   for (var i = 0; i < vals.length; i++) {
@@ -548,8 +601,7 @@ function emailAlreadyUsed_(raw) {
 }
 
 function shouldEmailStudent_(data) {
-  var to = String(data.email || "").trim();
-  return to.indexOf("@") > 0 && to.indexOf(".") > to.indexOf("@");
+  return validEmail_(data && data.email);
 }
 
 function sendStudentFeedback_(data, scored) {
@@ -558,24 +610,22 @@ function sendStudentFeedback_(data, scored) {
     ? scored.choices
     : extractChoices_(data);
   var name = String(data.name || "Student").trim() || "Student";
-  MailApp.sendEmail({
-    to: String(data.email).trim(),
-    subject: "Your FinLit Index results — The Skyward Project",
-    htmlBody: buildFeedbackEmail_(name, choices, scored),
-    body: buildFeedbackText_(name, scored),
-    name: "The Skyward Project",
-    replyTo: "verushkapatel4@gmail.com"
-  });
+  sendMail_(
+    String(data.email).trim(),
+    "Your FinLit Index results — The Skyward Project",
+    buildFeedbackText_(name, scored),
+    buildFeedbackEmail_(name, choices, scored)
+  );
 }
 
 function emailStudentsFromSheetNow() {
   var sheet = getOrCreateSheet_(SpreadsheetApp.getActiveSpreadsheet(), "Responses");
-  var last = Math.max(sheet.getLastRow(), 2);
+  var last = responseUsedRow_(sheet);
   if (last < 2) {
-    SpreadsheetApp.getUi().alert("No response rows to email.");
+    notify_("No response rows to email.");
     return;
   }
-  var width = Math.max(sheet.getLastColumn(), 45);
+  var width = responseWidth_(sheet);
   var values = sheet.getRange(2, 1, last - 1, width).getValues();
   var sent = [];
   var skipped = [];
@@ -584,7 +634,7 @@ function emailStudentsFromSheetNow() {
     var name = String(values[r][1] || "").trim();
     if (isLockedStudent_(name) || /^anonymous$/i.test(name)) continue;
     var email = String(values[r][2] || "").trim();
-    if (!email || email.indexOf("@") < 1) {
+    if (!validEmail_(email)) {
       skipped.push(name || ("row " + (r + 2)));
       continue;
     }
@@ -600,9 +650,9 @@ function emailStudentsFromSheetNow() {
       skipped.push((name || email) + " (" + err + ")");
     }
   }
-  SpreadsheetApp.getUi().alert(
-    (sent.length ? "Emailed:\n" + sent.join("\n") : "No emails sent.") +
-    (skipped.length ? "\n\nSkipped (no address or error):\n" + skipped.join("\n") : "")
+  notify_(
+    (sent.length ? "Emailed " + sent.length + ": " + sent.join("; ") : "No emails sent.") +
+    (skipped.length ? " Skipped: " + skipped.join("; ") : "")
   );
 }
 
@@ -753,6 +803,7 @@ function ensureResponseHeaders_(sheet) {
   sheet.setFrozenColumns(5);
   sheet.setColumnWidth(1, 170);
   sheet.setColumnWidth(2, 160);
+  sheet.setColumnWidth(3, 220);
   sheet.setColumnWidth(5, 180);
   sheet.setColumnWidth(18, 280);
 }
@@ -890,9 +941,9 @@ function parseScore_(raw) {
 
 function normalizeResponses_(sheet) {
   ensureResponseHeaders_(sheet);
-  var last = sheet.getLastRow();
+  var last = responseUsedRow_(sheet);
   if (last < 2) return;
-  var width = sheet.getLastColumn();
+  var width = responseWidth_(sheet);
   var values = sheet.getRange(2, 1, last - 1, width).getValues();
   var out = values.map(function (row) {
     var next = row.slice();
@@ -904,9 +955,9 @@ function normalizeResponses_(sheet) {
 }
 
 function readResponses_(sheet) {
-  var last = sheet.getLastRow();
+  var last = responseUsedRow_(sheet);
   if (last < 2) return { rows: [], n: 0 };
-  var values = sheet.getRange(2, 1, last - 1, sheet.getLastColumn()).getValues();
+  var values = sheet.getRange(2, 1, last - 1, responseWidth_(sheet)).getValues();
   var rows = values.filter(function (r) { return String(r[1]).trim() !== ""; });
   return { rows: rows, n: rows.length };
 }
@@ -1089,19 +1140,23 @@ function paintHeader_(range) {
 }
 
 function addChart_(sheet, type, range, row, col, title) {
-  var chart = sheet.newChart()
-    .setChartType(type)
-    .addRange(range)
-    .setOption("title", title)
-    .setOption("legend", { position: "none" })
-    .setOption("colors", [NAVY])
-    .setOption("backgroundColor", WHITE)
-    .setOption("hAxis", { textStyle: { color: NAVY } })
-    .setOption("vAxis", { textStyle: { color: NAVY }, minValue: 0 })
-    .setOption("titleTextStyle", { color: NAVY, fontSize: 12, bold: true })
-    .setPosition(row, col, 0, 0)
-    .build();
-  sheet.insertChart(chart);
+  try {
+    var chart = sheet.newChart()
+      .setChartType(type)
+      .addRange(range)
+      .setOption("title", title)
+      .setOption("legend", { position: "none" })
+      .setOption("colors", [NAVY])
+      .setOption("backgroundColor", WHITE)
+      .setOption("hAxis", { textStyle: { color: NAVY } })
+      .setOption("vAxis", { textStyle: { color: NAVY }, minValue: 0 })
+      .setOption("titleTextStyle", { color: NAVY, fontSize: 12, bold: true })
+      .setPosition(row, col, 0, 0)
+      .build();
+    sheet.insertChart(chart);
+  } catch (err) {
+    Logger.log("Chart skipped: " + title + " — " + err);
+  }
 }
 
 function hideUnusedSheets_(ss) {

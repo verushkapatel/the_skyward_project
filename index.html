@@ -58,6 +58,8 @@
     outline:2px solid var(--ink); outline-offset:1px; border-color:var(--ink);
   }
   .row2{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  .hint{font-size:.82rem; color:var(--muted); margin-top:7px;}
+  .req{font-weight:400; letter-spacing:0; color:var(--muted); text-transform:none;}
   @media(max-width:560px){
     .row2{grid-template-columns:1fr;}
     h1{font-size:1.6rem;}
@@ -229,17 +231,17 @@
 
       <div class="field">
         <label class="lbl" for="f-name">Name</label>
-        <input type="text" id="f-name" autocomplete="name">
+        <input type="text" id="f-name" autocomplete="name" required>
+      </div>
+      <div class="field">
+        <label class="lbl" for="f-email">Email <span class="req">(required)</span></label>
+        <input type="email" id="f-email" autocomplete="email" required>
+        <p class="hint">Required. We save this address on the response sheet and send your results here. Each address may sit the paper once.</p>
       </div>
       <div class="row2">
         <div class="field">
-          <label class="lbl" for="f-email">Email</label>
-          <input type="email" id="f-email" autocomplete="email" required>
-          <p class="note" style="margin-top:6px;">Required. We send your score only by email, not on this page.</p>
-        </div>
-        <div class="field">
           <label class="lbl" for="f-grade">Grade</label>
-          <select id="f-grade">
+          <select id="f-grade" required>
             <option value="">Select</option>
             <option>9</option>
             <option>10</option>
@@ -247,10 +249,10 @@
             <option>12</option>
           </select>
         </div>
-      </div>
-      <div class="field">
-        <label class="lbl" for="f-school">School</label>
-        <input type="text" id="f-school" autocomplete="organization">
+        <div class="field">
+          <label class="lbl" for="f-school">School</label>
+          <input type="text" id="f-school" autocomplete="organization" required>
+        </div>
       </div>
     </div>
 
@@ -299,9 +301,9 @@
         </div>
       </div>
 
-      <p class="err" id="err-details">Please fill in your name, a real email, grade, and school.</p>
+      <p class="err" id="err-details">Please fill in your name, a real email, grade, and school. Email is required so we can record it and send your results.</p>
       <div class="actions">
-        <button class="btn" type="button" onclick="toInstructions()">Continue</button>
+        <button class="btn" type="button" id="btn-continue" onclick="toInstructions()">Continue</button>
       </div>
     </div>
   </section>
@@ -320,6 +322,7 @@
         <li>Pick <b>one answer</b> per question. You can move between questions and change answers until you submit, or until time runs out.</li>
         <li>Use a rough sheet for any working out.</li>
         <li>When the timer ends, the test closes and your answers are sent automatically. Do not refresh or close this page during the test.</li>
+        <li>After you finish we email your score, the questions you missed, and why the correct option is right. Use an email you can check. Email is required.</li>
       </ol>
       <p class="note" style="margin-top:22px; margin-bottom:0;">
         Financial decisions in real life depend on your family, your income, your community, and your goals. There is not one right answer for every household. This test does not measure what is right for your specific situation. It measures how you reason about money as a general skill. Answer what you think the best general answer is.
@@ -378,6 +381,9 @@ const RESULTS_EMAIL = "verushkapatel4@gmail.com";
 const SHEETS_WEBHOOK = "https://script.google.com/macros/s/AKfycbyHrT-zCr-qk7ERVA4NBIHGO_FwbjbeNSha5tg9XYMyAAoYmIh05t81toaHQnaFbhL5cg/exec";
 const TEST_MINUTES = 30;
 const STORAGE_KEY = "skyward_finlit_2026_v2";
+const TAKEN_EMAILS_KEY = "skyward_finlit_taken_emails";
+const RESPONSES_SHEET_ID = "1cntlU1VebqoA2AZE9Vqa1VQ6st-jW8xYNZwVD-Yp044";
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /* ========================================== */
 
 const QUESTIONS = [
@@ -454,14 +460,87 @@ function toInstructions(){
   const email = document.getElementById("f-email").value.trim();
   const grade = document.getElementById("f-grade").value;
   const school = document.getElementById("f-school").value.trim();
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const emailOk = EMAIL_RE.test(email);
   const ok = !!(name && emailOk && grade && school);
   const err = document.getElementById("err-details");
-  err.textContent = email && !emailOk
-    ? "Please enter a real email address so we can send your results."
-    : "Please fill in your name, a real email, grade, and school.";
-  err.style.display = ok ? "none" : "block";
-  if(ok) show("s-inst");
+  const btn = document.getElementById("btn-continue");
+  if(!ok){
+    err.textContent = email && !emailOk
+      ? "Please enter a real email address so we can record it and send your results."
+      : "Please fill in your name, a real email, grade, and school. Email is required.";
+    err.style.display = "block";
+    return;
+  }
+  err.style.display = "none";
+  if(btn){ btn.disabled = true; }
+  emailAlreadySat(email).then(function(taken){
+    if(taken){
+      err.textContent = "This email has already sat the paper. Each address may take the test once.";
+      err.style.display = "block";
+      return;
+    }
+    show("s-inst");
+  }).finally(function(){
+    if(btn){ btn.disabled = false; }
+  });
+}
+
+function normEmail(raw){
+  return String(raw || "").trim().toLowerCase();
+}
+
+function localTakenEmails(){
+  try{ return JSON.parse(localStorage.getItem(TAKEN_EMAILS_KEY) || "[]"); }
+  catch(e){ return []; }
+}
+
+function markEmailTaken(email){
+  const n = normEmail(email);
+  if(!n) return;
+  const list = localTakenEmails();
+  if(list.indexOf(n) === -1){
+    list.push(n);
+    localStorage.setItem(TAKEN_EMAILS_KEY, JSON.stringify(list));
+  }
+}
+
+function emailAlreadySat(email){
+  const n = normEmail(email);
+  if(!n) return Promise.resolve(false);
+  if(localTakenEmails().indexOf(n) !== -1) return Promise.resolve(true);
+  return sheetHasEmail(n);
+}
+
+function sheetHasEmail(email){
+  return new Promise(function(resolve){
+    const cb = "skywardEq" + Date.now() + Math.floor(Math.random() * 100000);
+    let done = false;
+    const finish = function(val){
+      if(done) return;
+      done = true;
+      try{ delete window[cb]; }catch(e){}
+      if(script.parentNode) script.parentNode.removeChild(script);
+      resolve(!!val);
+    };
+    window[cb] = function(res){
+      let hit = false;
+      try{
+        (res.table.rows || []).forEach(function(row){
+          const cell = row.c && row.c[0];
+          const v = cell && cell.v;
+          if(normEmail(v) === email) hit = true;
+        });
+      }catch(e){}
+      finish(hit);
+    };
+    const script = document.createElement("script");
+    script.src = "https://docs.google.com/spreadsheets/d/" + RESPONSES_SHEET_ID +
+      "/gviz/tq?tqx=" + encodeURIComponent("out:json;responseHandler:" + cb) +
+      "&sheet=Responses&tq=" + encodeURIComponent("select C");
+    script.onerror = function(){ finish(false); };
+    setTimeout(function(){ finish(false); }, 4500);
+    document.head.appendChild(script);
+  });
 }
 
 function startTest(){
@@ -674,6 +753,7 @@ function restore(){
       });
     }
     if(submitted){
+      if(data.bg && data.bg.email) markEmailTaken(data.bg.email);
       if(timedOut) applyTimedOutCopy();
       show("s-done");
       return;
@@ -697,6 +777,14 @@ function newStudent(){
 
 async function submitTest(auto){
   if(submitted) return;
+  const bgCheck = collectBackground();
+  if(!EMAIL_RE.test(bgCheck.email)){
+    show("s-details");
+    const err = document.getElementById("err-details");
+    err.textContent = "Email is required. We cannot record this attempt without it.";
+    err.style.display = "block";
+    return;
+  }
   submitted = true;
   locked = true;
   closeModal();
@@ -709,6 +797,7 @@ async function submitTest(auto){
 
   const s = scoreIt();
   const bg = collectBackground();
+  markEmailTaken(bg.email);
   const timeUsedMin = Math.round((TEST_MINUTES * 60 - Math.max(remainingSeconds(), 0)) / 6) / 10;
   const payload = {
     version: "finlit-2026-v2",
