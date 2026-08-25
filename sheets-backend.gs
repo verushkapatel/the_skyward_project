@@ -16,6 +16,10 @@
  * After that, every new test submission rebuilds the dashboard and charts.
  * You can also use FinLit → Rebuild dashboard from the spreadsheet menu.
  *
+ * Scores come from the quiz itself. Running setup does not rescore old rows.
+ * If scores were wiped to 0, restore a Google Sheets version from before that
+ * happened: File → Version history → See version history.
+ *
  * Q22 key is A (₹50 lakh). Q25 key is B. Profession and correct-count are not stored.
  */
 
@@ -78,7 +82,7 @@ function setup() {
 function rebuildAll_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var responses = getOrCreateSheet_(ss, "Responses");
-  rescoreResponses_(responses);
+  normalizeResponses_(responses);
   var data = readResponses_(responses);
   buildDashboard_(ss, data);
   buildQuestionAnalysis_(ss, data);
@@ -90,26 +94,29 @@ function ingestAttempt_(data) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = getOrCreateSheet_(ss, "Responses");
   ensureResponseHeaders_(sheet);
-  sheet.appendRow(buildResponseRow_(data, scoreChoices_(extractChoices_(data))));
+  sheet.appendRow(buildResponseRow_(data, scoreAttempt_(data)));
+}
+
+function scoreAttempt_(data) {
+  var choices = extractChoices_(data);
+  return applySubmittedScore_(data, scoreChoices_(choices));
 }
 
 function extractChoices_(data) {
   var choices = [];
   for (var i = 0; i < 27; i++) {
-    choices.push(parseChoice_(data["q" + (i + 1) + "_choice"] || data["q" + (i + 1)], i));
+    var n = i + 1;
+    choices.push(parseChoice_(data["q" + n + "_choice"] || data["q" + n], i));
   }
   return choices;
 }
 
 function parseChoice_(raw, index) {
   raw = String(raw || "").trim();
-  if (!raw || raw === "blank") return "";
-  if (raw === "OK") {
-    // Older rows stored OK instead of the letter. Q22 used to be keyed as A.
-    return index === 21 ? "A" : KEYS[index];
-  }
-  var letter = raw.match(/\b([ABCD])\b/);
-  return letter ? letter[1] : "";
+  if (!raw || /^blank$/i.test(raw) || raw === "OK") return "";
+  if (/^[ABCD]$/i.test(raw)) return raw.toUpperCase();
+  var marked = raw.match(/X\s*\(\s*([ABCD])\s*\)/i) || raw.match(/picked\s+([ABCD])/i);
+  return marked ? marked[1].toUpperCase() : "";
 }
 
 function scoreChoices_(choices) {
@@ -147,7 +154,6 @@ function responseHeaders_() {
 
 function ensureResponseHeaders_(sheet) {
   var headers = responseHeaders_();
-  var width = Math.max(sheet.getLastColumn(), headers.length);
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   } else {
@@ -164,9 +170,6 @@ function ensureResponseHeaders_(sheet) {
   sheet.setColumnWidth(2, 160);
   sheet.setColumnWidth(5, 180);
   sheet.setColumnWidth(18, 280);
-  if (width > headers.length) {
-    sheet.deleteColumns(headers.length + 1, width - headers.length);
-  }
 }
 
 function buildResponseRow_(data, scored) {
@@ -218,47 +221,42 @@ function migrateOldData_(ss) {
   }
 
   var headers = values[0].map(function (h) { return String(h); });
-  var looksNew = headers.indexOf("Score / 25") !== -1 && headers.indexOf("profession") === -1 && headers.indexOf("correct_count") === -1;
+  if (!isLegacyDump_(headers)) {
+    ensureResponseHeaders_(getOrCreateSheet_(ss, "Responses"));
+    return;
+  }
+
   var rows = [];
   for (var r = 1; r < values.length; r++) {
     var rec = {};
     headers.forEach(function (h, c) { rec[h] = values[r][c]; });
-    if (!(rec.name || rec.Name || rec.q1 || rec.Q1)) continue;
-    if (looksNew) {
-      var choices = [];
-      for (var i = 0; i < 27; i++) choices.push(parseChoice_(rec["Q" + (i + 1)], i));
-      rows.push(buildResponseRow_({
-        submitted_at: rec["Timestamp"] || rec.submitted_at,
-        name: rec.Name || rec.name,
-        email: rec.Email || rec.email || "",
-        grade: rec.Grade || rec.grade,
-        school: rec.School || rec.school,
-        bg_transport: rec.Transport || rec.bg_transport,
-        bg_parents: rec["Parents occupation"] || rec.bg_parents,
-        bg_area: rec.Area || rec.bg_area,
-        bg_devices: rec.Devices || rec.bg_devices,
-        bg_income: rec.Income || rec.bg_income,
-        time_used_min: rec["Time used (min)"] || rec.time_used,
-        auto_submitted: rec["Timed out"] === "Yes" ? "yes" : rec.auto_submitted
-      }, scoreChoices_(choices)));
-    } else {
-      var oldChoices = [];
-      for (var j = 0; j < 27; j++) oldChoices.push(parseChoice_(rec["q" + (j + 1)], j));
-      rows.push(buildResponseRow_({
-        submitted_at: rec.submitted_at,
-        name: rec.name,
-        email: rec.email || "",
-        grade: rec.grade,
-        school: rec.school,
-        bg_transport: rec.bg_transport,
-        bg_parents: rec.bg_parents,
-        bg_area: rec.bg_area,
-        bg_devices: rec.bg_devices,
-        bg_income: rec.bg_income,
-        time_used: rec.time_used,
-        auto_submitted: rec.auto_submitted
-      }, scoreChoices_(oldChoices)));
-    }
+    if (!(rec.name || rec.Name || rec.q1 || rec.Q1 || rec.q1_choice)) continue;
+    var choices = [];
+    for (var i = 0; i < 27; i++) choices.push(choiceFromRecord_(rec, i));
+    var scored = applySubmittedScore_({
+      score: rec.score != null && rec.score !== "" ? rec.score : rec["Score / 25"],
+      score_total: rec.score_total,
+      part_a: rec.part_a != null ? rec.part_a : rec["Part A / 2.5"],
+      part_b: rec.part_b != null ? rec.part_b : rec["Part B / 7"],
+      part_c: rec.part_c != null ? rec.part_c : rec["Part C / 12"],
+      part_d: rec.part_d != null ? rec.part_d : rec["Part D / 3.5"],
+      wrong_questions: rec.wrong_questions || rec["Missed questions"]
+    }, scoreChoices_(choices));
+    rows.push(buildResponseRow_({
+      submitted_at: rec["Timestamp"] || rec.submitted_at,
+      name: rec.Name || rec.name,
+      email: rec.Email || rec.email || "",
+      grade: rec.Grade || rec.grade,
+      school: rec.School || rec.school,
+      bg_transport: rec.Transport || rec.bg_transport,
+      bg_parents: rec["Parents occupation"] || rec.bg_parents,
+      bg_area: rec.Area || rec.bg_area,
+      bg_devices: rec.Devices || rec.bg_devices,
+      bg_income: rec.Income || rec.bg_income,
+      time_used_min: rec["Time used (min)"] || rec.time_used_min,
+      time_used: rec.time_used,
+      auto_submitted: rec["Timed out"] === "Yes" ? "yes" : rec.auto_submitted
+    }, scored));
   }
 
   var dest = getOrCreateSheet_(ss, "Responses");
@@ -267,35 +265,57 @@ function migrateOldData_(ss) {
   if (rows.length) dest.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
 }
 
-function rescoreResponses_(sheet) {
+function isLegacyDump_(headers) {
+  var set = {};
+  headers.forEach(function (h) { set[String(h)] = 1; });
+  return !!(set.q1 || set.q1_choice || set.profession || set.correct_count ||
+    set["Q1 correct"] || set["Correct / 27"] || set.score_total);
+}
+
+function choiceFromRecord_(rec, i) {
+  var n = i + 1;
+  return parseChoice_(
+    rec["q" + n + "_choice"] || rec["q" + n] || rec["Q" + n],
+    i
+  );
+}
+
+function applySubmittedScore_(data, scored) {
+  var submitted = parseScore_(data.score);
+  if (submitted == null) submitted = parseScore_(data.score_total);
+  if (submitted != null) scored.total = submitted;
+  var a = parseScore_(data.part_a);
+  var b = parseScore_(data.part_b);
+  var c = parseScore_(data.part_c);
+  var d = parseScore_(data.part_d);
+  if (a != null) scored.parts.A = a;
+  if (b != null) scored.parts.B = b;
+  if (c != null) scored.parts.C = c;
+  if (d != null) scored.parts.D = d;
+  if (data.wrong_questions) scored.missed = data.wrong_questions;
+  return scored;
+}
+
+function parseScore_(raw) {
+  if (raw === "" || raw == null) return null;
+  if (typeof raw === "number" && isFinite(raw)) return raw;
+  var m = String(raw).replace(/,/g, "").match(/([0-9]+(?:\.[0-9]+)?)/);
+  return m ? Number(m[1]) : null;
+}
+
+function normalizeResponses_(sheet) {
   ensureResponseHeaders_(sheet);
   var last = sheet.getLastRow();
   if (last < 2) return;
-  var values = sheet.getRange(2, 1, last - 1, sheet.getLastColumn()).getValues();
-  var headers = responseHeaders_();
+  var width = sheet.getLastColumn();
+  var values = sheet.getRange(2, 1, last - 1, width).getValues();
   var out = values.map(function (row) {
-    var choices = [];
-    for (var i = 0; i < 27; i++) choices.push(parseChoice_(row[18 + i], i));
-    var scored = scoreChoices_(choices);
-    var data = {
-      submitted_at: row[0],
-      name: row[1],
-      email: row[2],
-      grade: row[3],
-      school: row[4],
-      bg_transport: row[5],
-      bg_parents: row[6],
-      bg_area: row[7],
-      bg_devices: row[8],
-      bg_income: row[9],
-      time_used_min: row[10],
-      auto_submitted: String(row[11]).toLowerCase().indexOf("yes") !== -1 ? "yes" : "no"
-    };
-    var built = buildResponseRow_(data, scored);
-    while (built.length < headers.length) built.push("");
-    return built.slice(0, headers.length);
+    var next = row.slice();
+    next[4] = canonicalSchool_(next[4] || "");
+    if (next[9]) next[9] = canonicalIncome_(next[9]);
+    return next;
   });
-  sheet.getRange(2, 1, out.length, headers.length).setValues(out);
+  sheet.getRange(2, 1, out.length, width).setValues(out);
 }
 
 function readResponses_(sheet) {
@@ -328,7 +348,7 @@ function buildDashboard_(ss, data) {
   sheet.getRange("A2").setValue("Pune 2026  ·  scores out of 25").setFontColor(GOLD).setFontStyle("italic");
 
   var n = data.n;
-  var scores = data.rows.map(function (r) { return Number(r[12]) || 0; });
+  var scores = data.rows.map(function (r) { return parseScore_(r[12]) || 0; });
   var timedOut = data.rows.filter(function (r) {
     return String(r[11]).toLowerCase().indexOf("yes") !== -1;
   }).length;
@@ -519,7 +539,7 @@ function groupAvg_(rows, keyIndex, valueIndex, canonFn) {
     if (canonFn) key = canonFn(key) || "Not given";
     if (!map[key]) map[key] = { count: 0, sum: 0 };
     map[key].count++;
-    map[key].sum += Number(r[valueIndex]) || 0;
+    map[key].sum += parseScore_(r[valueIndex]) || 0;
   });
   Object.keys(map).forEach(function (k) {
     map[k].avg = map[k].count ? map[k].sum / map[k].count : 0;
@@ -576,7 +596,7 @@ function incomeTable_(rows) {
 }
 
 function col_(rows, i) {
-  return rows.map(function (r) { return Number(r[i]) || 0; });
+  return rows.map(function (r) { return parseScore_(r[i]) || 0; });
 }
 
 function avg_(arr) {

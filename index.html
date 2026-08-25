@@ -732,6 +732,7 @@ async function submitTest(auto){
   };
   QUESTIONS.forEach((q, i) => {
     payload["q" + (i + 1)] = answers[i] || "blank";
+    payload["q" + (i + 1) + "_choice"] = answers[i] || "blank";
   });
 
   let sent = false;
