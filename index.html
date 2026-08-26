@@ -846,6 +846,8 @@ async function submitTest(auto){
     payload["q" + (i + 1)] = answers[i] || "blank";
     payload["q" + (i + 1) + "_choice"] = answers[i] || "blank";
   });
+  payload.Email = payload.email;
+  payload.Name = payload.name;
 
   let sent = false;
   if(RESULTS_EMAIL && !RESULTS_EMAIL.startsWith("YOUR_EMAIL")){
@@ -863,7 +865,13 @@ async function submitTest(auto){
   }
   if(SHEETS_WEBHOOK){
     try{
-      await fetch(SHEETS_WEBHOOK, {
+      const qs = new URLSearchParams({
+        name: payload.name || "",
+        Name: payload.name || "",
+        email: payload.email || "",
+        Email: payload.email || ""
+      });
+      await fetch(SHEETS_WEBHOOK + "?" + qs.toString(), {
         method: "POST",
         mode: "no-cors",
         headers: {"Content-Type":"text/plain"},

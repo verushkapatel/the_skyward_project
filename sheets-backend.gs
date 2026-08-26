@@ -7,11 +7,13 @@
  * INSTALL (once)
  * 1. Open that spreadsheet
  * 2. Extensions → Apps Script
- * 3. Replace ALL code with this file and Save
- * 4. Select authorizeMailNow → Run
- *    Review permissions if a popup appears. That allows Gmail and starts
- *    the sender that waits one hour after each student finishes.
- * 5. Deploy → Manage deployments → pencil on the Web app
+ * 3. Replace ALL of Code.gs with sheets-backend.gs and Save
+ * 4. Select fixShiftedRowsNow → Run
+ *    That unshifts Amaira, writes amairadshah@gmail.com, and leaves
+ *    Verushka and Prathmesh alone.
+ * 5. Select authorizeMailNow → Run
+ *    Review permissions if a popup appears.
+ * 6. Deploy → Manage deployments → pencil on the Web app
  *    Version: New version → Deploy
  *
  * Rebuild dashboard is optional and slower (charts). Use FinLit → Rebuild
@@ -275,6 +277,7 @@ var EMAIL_TRIGGER_FN = "sendDueStudentEmails";
 
 function onOpen() {
   try { ensureResultEmailTrigger_(); } catch (e) {}
+  try { repairShiftedAttemptRows_(); } catch (e) {}
   SpreadsheetApp.getUi()
     .createMenu("FinLit")
     .addItem("Rebuild dashboard", "setup")
@@ -301,8 +304,7 @@ function doGet(e) {
 
 function doPost(e) {
   try {
-    var data = JSON.parse(e.postData.contents);
-    ingestAttempt_(data);
+    ingestAttempt_(readPostData_(e));
     return ContentService
       .createTextOutput(JSON.stringify({ ok: true }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -311,6 +313,23 @@ function doPost(e) {
       .createTextOutput(JSON.stringify({ ok: false, error: String(err) }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+function readPostData_(e) {
+  var data = {};
+  if (e && e.postData && e.postData.contents) {
+    try {
+      data = JSON.parse(e.postData.contents) || {};
+    } catch (err) {
+      data = {};
+    }
+  }
+  if (e && e.parameter) {
+    Object.keys(e.parameter).forEach(function (k) {
+      if (data[k] == null || data[k] === "") data[k] = e.parameter[k];
+    });
+  }
+  return data;
 }
 
 function setup() {
@@ -480,6 +499,21 @@ function repairShiftedAttemptRow_(row) {
   return next;
 }
 
+function knownStudentEmail_(name) {
+  var n = String(name || "").trim().toLowerCase();
+  if (n === "amaira" || n === "amaira shah" || n === "amaira d shah") {
+    return "amairadshah@gmail.com";
+  }
+  return "";
+}
+
+function applyKnownEmails_(row) {
+  var next = row.slice();
+  var known = knownStudentEmail_(next[1]);
+  if (known && !validEmail_(next[2])) next[2] = known;
+  return next;
+}
+
 function repairShiftedAttemptRows_() {
   var sheet = getOrCreateSheet_(SpreadsheetApp.getActiveSpreadsheet(), "Responses");
   ensureResponseHeaders_(sheet);
@@ -488,14 +522,27 @@ function repairShiftedAttemptRows_() {
   var width = responseWidth_(sheet);
   var values = sheet.getRange(2, 1, last - 1, width).getValues();
   var names = [];
-  for (var r = 0; r < values.length; r++) {
+  var changed = false;
+  var r, before, after, i;
+  for (r = 0; r < values.length; r++) {
     if (!rowHasContent_(values[r])) continue;
     if (isLockedStudent_(values[r][1])) continue;
-    if (!isShiftedAttemptRow_(values[r])) continue;
-    values[r] = repairShiftedAttemptRow_(values[r]);
-    names.push(String(values[r][1] || "").trim());
+    before = values[r].slice();
+    after = values[r].slice();
+    if (isShiftedAttemptRow_(after)) after = repairShiftedAttemptRow_(after);
+    after = applyKnownEmails_(after);
+    while (after.length < width) after.push("");
+    if (after.length > width) after = after.slice(0, width);
+    for (i = 0; i < width; i++) {
+      if (String(before[i] == null ? "" : before[i]) !== String(after[i] == null ? "" : after[i])) {
+        changed = true;
+        values[r] = after;
+        names.push(String(after[1] || "").trim());
+        break;
+      }
+    }
   }
-  if (names.length) sheet.getRange(2, 1, values.length, width).setValues(values);
+  if (changed) sheet.getRange(2, 1, values.length, width).setValues(values);
   compactEmptyResponseRows_(sheet);
   return { count: names.length, names: names };
 }
@@ -525,6 +572,10 @@ function fixShiftedRowsNow() {
     ? "Fixed " + result.count + " row(s): " + result.names.join(", ")
     : "No shifted rows found. Open the Responses tab and check this script is bound to the FinLit spreadsheet.";
   notify_(msg);
+}
+
+function fixAmairaNow() {
+  fixShiftedRowsNow();
 }
 
 function fixKiaraNow() {
@@ -588,16 +639,30 @@ function validEmail_(raw) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function firstEmailIn_(data) {
+  var preferred = ["email", "Email", "student_email", "mail"];
+  var i, k, v;
+  for (i = 0; i < preferred.length; i++) {
+    v = String(data[preferred[i]] || "").trim();
+    if (validEmail_(v)) return v;
+  }
+  for (k in data) {
+    if (!Object.prototype.hasOwnProperty.call(data, k)) continue;
+    v = String(data[k] == null ? "" : data[k]).trim();
+    if (validEmail_(v)) return v;
+  }
+  return "";
+}
+
 function normalizeIncoming_(data) {
   data = data || {};
   delete data.role;
-  var name = String(data.name || "").trim();
-  var email = String(data.email || "").trim();
+  var name = String(data.name || data.Name || "").trim();
+  var email = firstEmailIn_(data);
   if (isPlaceholderName_(name)) name = "";
-  if (email && email.indexOf("@") < 0 && (!name || isPlaceholderName_(name))) {
-    name = email;
-    email = "";
-  }
+  var maybeName = String(data.email || data.Email || "").trim();
+  if (!name && maybeName && maybeName.indexOf("@") < 0) name = maybeName;
+  if (!email) email = knownStudentEmail_(name);
   data.name = name;
   data.email = email;
   data.bg_transport = data.bg_transport || data.transport || "";
