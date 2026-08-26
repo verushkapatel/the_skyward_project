@@ -230,8 +230,8 @@
       <p class="note">This test is for students of grades 9 to 12 only.</p>
 
       <div class="field">
-        <label class="lbl" for="f-name">Name</label>
-        <input type="text" id="f-name" autocomplete="name" required>
+          <label class="lbl" for="f-name">Full name</label>
+          <input type="text" id="f-name" autocomplete="name" required placeholder="Your name">
       </div>
       <div class="field">
         <label class="lbl" for="f-email">Email <span class="req">(required)</span></label>
@@ -461,13 +461,18 @@ function toInstructions(){
   const grade = document.getElementById("f-grade").value;
   const school = document.getElementById("f-school").value.trim();
   const emailOk = EMAIL_RE.test(email);
-  const ok = !!(name && emailOk && grade && school);
+  const nameOk = !!(name && !/^student$/i.test(name));
+  const ok = !!(nameOk && emailOk && grade && school);
   const err = document.getElementById("err-details");
   const btn = document.getElementById("btn-continue");
   if(!ok){
-    err.textContent = email && !emailOk
-      ? "Please enter a real email address so we can record it and send your results."
-      : "Please fill in your name, a real email, grade, and school. Email is required.";
+    if(name && /^student$/i.test(name)){
+      err.textContent = "Please enter your real name, not “student”.";
+    } else if(email && !emailOk){
+      err.textContent = "Please enter a real email address so we can record it and send your results.";
+    } else {
+      err.textContent = "Please fill in your name, a real email, grade, and school. Email is required.";
+    }
     err.style.display = "block";
     return;
   }
@@ -778,10 +783,12 @@ function newStudent(){
 async function submitTest(auto){
   if(submitted) return;
   const bgCheck = collectBackground();
-  if(!EMAIL_RE.test(bgCheck.email)){
+  if(!EMAIL_RE.test(bgCheck.email) || !bgCheck.name || /^student$/i.test(bgCheck.name)){
     show("s-details");
     const err = document.getElementById("err-details");
-    err.textContent = "Email is required. We cannot record this attempt without it.";
+    err.textContent = /^student$/i.test(bgCheck.name)
+      ? "Please enter your real name, not “student”."
+      : "Email is required. We cannot record this attempt without it.";
     err.style.display = "block";
     return;
   }
@@ -811,7 +818,6 @@ async function submitTest(auto){
     version: "finlit-2026-v2",
     feedback: true,
     submitted_at: new Date().toISOString(),
-    role: "student",
     name: bg.name,
     email: bg.email,
     grade: bg.grade,

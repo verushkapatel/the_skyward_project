@@ -415,12 +415,17 @@ function fillPendingChoices_() {
   if (changed) sheet.getRange(2, 1, values.length, width).setValues(values);
 }
 
+function isPlaceholderName_(name) {
+  return /^student$/i.test(String(name || "").trim());
+}
+
 function isShiftedAttemptRow_(row) {
   var name = String(row[1] || "").trim().toLowerCase();
   if (isLockedStudent_(name)) return false;
   var email = String(row[2] || "").trim();
   var timed = String(row[11] || "").trim();
   var emailIsName = email && email.indexOf("@") < 0;
+  if (isPlaceholderName_(name) && emailIsName) return true;
   var looksTime = /\d+(\.\d+)?\s*min/i.test(timed);
   var looksScore = /\d+(\.\d+)?\s*\/\s*25/.test(String(row[14] || "")) ||
     /\d+(\.\d+)?\s*\/\s*25/.test(String(row[13] || ""));
@@ -429,12 +434,25 @@ function isShiftedAttemptRow_(row) {
   return looksTime && autoInScore && (looksScore || missedBlob || emailIsName || name === "student");
 }
 
+function answersStartIndex_(row) {
+  var letterAt = function (idx) {
+    return !!parseChoice_(row[idx], 0);
+  };
+  if (!letterAt(16) && letterAt(17)) return 17;
+  if (letterAt(16) && !letterAt(18)) return 16;
+  return 18;
+}
+
 function repairShiftedAttemptRow_(row) {
   var next = row.slice();
-  while (next.length < 45) next.push("");
+  while (next.length < 46) next.push("");
   var email = String(next[2] || "").trim();
   if (email && email.indexOf("@") < 0) {
     next[1] = email;
+    next[2] = "";
+  }
+  if (isPlaceholderName_(next[1]) && String(next[2] || "").indexOf("@") < 0) {
+    next[1] = String(next[2] || "").trim();
     next[2] = "";
   }
   next[5] = next[6];
@@ -446,8 +464,10 @@ function repairShiftedAttemptRow_(row) {
   var timeMin = Number(timeRaw.replace(/ min/i, "").trim());
   next[10] = isFinite(timeMin) && timeRaw ? timeMin : next[10];
   next[11] = /yes/i.test(String(row[12] || "")) ? "Yes" : "No";
+  var start = answersStartIndex_(row);
   var answers = [];
-  for (var i = 0; i < 27; i++) answers.push(parseChoice_(next[16 + i], i));
+  var i;
+  for (i = 0; i < 27; i++) answers.push(parseChoice_(next[start + i], i));
   var scored = scoreChoices_(answers);
   next[12] = scored.total;
   next[13] = scored.parts.A;
@@ -455,7 +475,8 @@ function repairShiftedAttemptRow_(row) {
   next[15] = scored.parts.C;
   next[16] = scored.parts.D;
   next[17] = scored.missed;
-  for (var j = 0; j < 27; j++) next[18 + j] = scored.choices[j];
+  for (i = 0; i < 27; i++) next[18 + i] = scored.choices[i];
+  if (next.length > 46) next = next.slice(0, 46);
   return next;
 }
 
@@ -472,7 +493,7 @@ function repairShiftedAttemptRows_() {
     if (isLockedStudent_(values[r][1])) continue;
     if (!isShiftedAttemptRow_(values[r])) continue;
     values[r] = repairShiftedAttemptRow_(values[r]);
-    names.push(String(values[r][1] || "student").trim());
+    names.push(String(values[r][1] || "").trim());
   }
   if (names.length) sheet.getRange(2, 1, values.length, width).setValues(values);
   compactEmptyResponseRows_(sheet);
@@ -544,7 +565,11 @@ function ingestAttempt_(data) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = getOrCreateSheet_(ss, "Responses");
   ensureResponseHeaders_(sheet);
+  repairShiftedAttemptRows_();
   data = normalizeIncoming_(data);
+  if (isPlaceholderName_(data.name)) {
+    throw new Error("A real name is required.");
+  }
   if (!validEmail_(data.email)) {
     throw new Error("A real email address is required.");
   }
@@ -565,9 +590,11 @@ function validEmail_(raw) {
 
 function normalizeIncoming_(data) {
   data = data || {};
+  delete data.role;
   var name = String(data.name || "").trim();
   var email = String(data.email || "").trim();
-  if (email && email.indexOf("@") < 0 && (!name || /^student$/i.test(name))) {
+  if (isPlaceholderName_(name)) name = "";
+  if (email && email.indexOf("@") < 0 && (!name || isPlaceholderName_(name))) {
     name = email;
     email = "";
   }
@@ -658,11 +685,16 @@ function scoredFromRow_(row) {
   return scored;
 }
 
+function alreadyReceivedResults_(email) {
+  return String(email || "").trim().toLowerCase() === "shah01jiya@gmail.com";
+}
+
 function shouldSendResultsForRow_(row, now, ignoreWait) {
   if (!rowHasContent_(row)) return false;
   var name = String(row[1] || "").trim();
   if (isLockedStudent_(name) || /^anonymous$/i.test(name)) return false;
   if (!validEmail_(row[2])) return false;
+  if (alreadyReceivedResults_(row[2])) return false;
   if (rowAlreadyEmailed_(row)) return false;
   if (ignoreWait) return true;
   var when = parseSubmittedAt_(row[0]);
